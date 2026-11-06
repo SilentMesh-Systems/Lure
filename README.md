@@ -7,7 +7,7 @@ Attackers who reach a plant often come in through stolen VPN or jump-host logins
 - **No agent, nothing on the control network.** Bait files go on IT-side machines: engineering workstations, jump hosts, vendor shares.
 - **Alerts on use, not on open.** Opening, copying, backing up or antivirus-scanning a bait file does nothing. Only a login attempt with a bait credential fires an alert.
 - **Your alerts go only to you.** The listener sends alerts to your own webhook, syslog or terminal. No SilentMesh service is involved, and nothing is sent to us.
-- **Python 3.9+, standard library only.** Apache-2.0.
+- **Runs anywhere Python 3.9+ runs:** Linux (x86-64 and ARM, including Raspberry Pi), Windows and macOS. Standard library only. Apache-2.0.
 
 ## Quick start
 

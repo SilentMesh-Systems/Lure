@@ -166,9 +166,9 @@ class DashboardTest(unittest.TestCase):
             srv = serve(a, "127.0.0.1", port)
             try:
                 base = f"http://127.0.0.1:{port}"
-                page = urllib.request.urlopen(base + "/").read().decode()
+                page = urllib.request.urlopen(base + "/", timeout=5).read().decode()
                 self.assertIn("SilentMesh", page)
-                st = json.loads(urllib.request.urlopen(base + "/api/state").read())
+                st = json.loads(urllib.request.urlopen(base + "/api/state", timeout=5).read())
                 self.assertTrue(st["baits"][0]["triggered"])
                 self.assertEqual(st["alerts"][0]["severity"], "high")
 
@@ -176,14 +176,14 @@ class DashboardTest(unittest.TestCase):
                     req = urllib.request.Request(base + "/api/ack", data=b'{"id": 1}', method="POST",
                                                  headers={"Content-Type": ctype, "Origin": origin})
                     try:
-                        return urllib.request.urlopen(req).status
+                        return urllib.request.urlopen(req, timeout=5).status
                     except urllib.error.HTTPError as e:
                         return e.code
 
                 self.assertEqual(post("text/plain", base), 403)
                 self.assertEqual(post("application/json", "https://evil.example"), 403)
                 self.assertEqual(post("application/json", base), 200)
-                st = json.loads(urllib.request.urlopen(base + "/api/state").read())
+                st = json.loads(urllib.request.urlopen(base + "/api/state", timeout=5).read())
                 self.assertTrue(st["alerts"][0]["acknowledged"])
             finally:
                 srv.shutdown()

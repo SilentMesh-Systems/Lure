@@ -7,11 +7,11 @@ from .listen import Alerter, run
 
 
 def main():
-    p = argparse.ArgumentParser(prog="tripwire", description="Credential tripwires for IT/OT networks.")
+    p = argparse.ArgumentParser(prog="lure", description="Credential lures for IT/OT networks.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("generate", help="write a set of bait files")
-    g.add_argument("--listener", required=True, help="host or IP that runs `tripwire listen`")
+    g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
     g.add_argument("--out", default="baits")
     g.add_argument("--site", default="plant")
 

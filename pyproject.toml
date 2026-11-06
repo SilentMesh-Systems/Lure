@@ -3,16 +3,16 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "silentmesh-tripwire"
+name = "silentmesh-lure"
 version = "0.1.0b1"
-description = "Credential tripwires for IT/OT networks: alert on use, not on open."
+description = "Credential lures for IT/OT networks: alert on use, not on open."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [{name = "SilentMesh Systems Private Limited"}]
 
 [project.scripts]
-tripwire = "tripwire.__main__:main"
+lure = "lure.__main__:main"
 
 [tool.setuptools]
-packages = ["tripwire"]
+packages = ["lure"]

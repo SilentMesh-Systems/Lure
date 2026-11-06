@@ -80,7 +80,7 @@ def _xlsx(path, rows):
 def generate(listener, out_dir, site="plant"):
     """Write the bait set into out_dir and return the manifest.
 
-    listener: the hostname or IP of the host running `tripwire listen`.
+    listener: the hostname or IP of the host running `lure listen`.
     Pick one nothing legitimate ever logs into.
     """
     os.makedirs(out_dir, exist_ok=True)

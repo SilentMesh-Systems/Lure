@@ -1,8 +1,10 @@
-# SilentMesh Tripwire (beta)
+# SilentMesh Lure (beta)
 
-Free credential tripwires for converged IT/OT networks.
+**Planted credentials that give the attacker away.** Deceive, never disrupt.
 
-Attackers who reach a plant often come in through stolen VPN or jump-host logins, then look for more saved passwords on engineering workstations. Tripwire plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
+Free credential lures for converged IT/OT networks.
+
+Attackers who reach a plant often come in through stolen VPN or jump-host logins, then look for more saved passwords on engineering workstations. Lure plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
 
 - **No agent, nothing on the control network.** Bait files go on IT-side machines: engineering workstations, jump hosts, vendor shares.
 - **Alerts on use, not on open.** Opening, copying, backing up or antivirus-scanning a bait file does nothing. Only a login attempt with a bait credential fires an alert.
@@ -11,14 +13,14 @@ Attackers who reach a plant often come in through stolen VPN or jump-host logins
 
 ## Quick start
 
-No install step: clone the repo and run it with `python3 -m tripwire` from the repo folder (or `pip install .`).
+No install step: clone the repo and run it with `python3 -m lure` from the repo folder (or `pip install .`).
 
-1. Pick a tripwire host: any spare Linux machine or VM on the IT side that nobody legitimately logs into.
+1. Pick a listener host: any spare Linux machine or VM on the IT side that nobody legitimately logs into.
 
 2. Generate the bait set, pointing it at that host:
 
    ```
-   python3 -m tripwire generate --listener 10.0.5.20 --out baits
+   python3 -m lure generate --listener 10.0.5.20 --out baits
    ```
 
    This writes:
@@ -28,12 +30,12 @@ No install step: clone the repo and run it with `python3 -m tripwire` from the r
    | `passwords.xlsx` | A real spreadsheet of logins: jump host, SCADA web, historian, vendor VPN | An engineering share or a workstation's Documents folder |
    | `jump-host.rdp` | A saved Remote Desktop connection with a username filled in | An engineering workstation desktop |
    | `plant-vendor-vpn.ovpn` | A vendor remote-support VPN profile with its login in a comment | A jump host or a vendor laptop share |
-   | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network:** anyone who reads it knows which logins are fake. | Only on the tripwire host |
+   | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network:** anyone who reads it knows which logins are fake. | Only on the listener host |
 
-3. Run the listener on the tripwire host:
+3. Run the listener on the listener host:
 
    ```
-   python3 -m tripwire listen --manifest baits/manifest.json \
+   python3 -m lure listen --manifest baits/manifest.json \
        --webhook https://your-alerts.example/hook --syslog 10.0.1.5:514
    ```
 
@@ -51,13 +53,13 @@ No install step: clone the repo and run it with `python3 -m tripwire` from the r
 ## How alerts are graded
 
 - **high:** a bait username was used. Someone found a planted file and tried it.
-- **medium:** something connected to the tripwire host without a bait username. Nothing legitimate should connect at all, so this is still worth a look. A scanner you run yourself is the usual cause.
+- **medium:** something connected to the listener host without a bait username. Nothing legitimate should connect at all, so this is still worth a look. A scanner you run yourself is the usual cause.
 
 The same source, service and username alert once per 10 minutes, with at most 20 alerts per 10 minutes overall, so one attacker cannot flood your pager.
 
 ## Data handling
 
-Tripwire runs entirely on your own machines. The listener records the connecting IP and port, the service, the time and the username it was offered. It sends that only to the sinks you configure. Passwords sent to the listener are never read or stored. SilentMesh receives no data.
+Lure runs entirely on your own machines. The listener records the connecting IP and port, the service, the time and the username it was offered. It sends that only to the sinks you configure. Passwords sent to the listener are never read or stored. SilentMesh receives no data.
 
 ## Use responsibly
 
@@ -71,7 +73,7 @@ Only plant baits on systems you own or are authorised to protect. The person who
 
 ## Going further
 
-Tripwire is the free, IT-side part of SilentMesh. The full product adds decoy PLCs and controllers on the plant network itself (Modbus/TCP, S7comm, IEC 60870-5-104, DNP3, OPC UA, SMB), off the control path and fail-open. See https://silentmesh.me.
+Lure is the free, IT-side part of SilentMesh. The full product adds decoy PLCs and controllers on the plant network itself (Modbus/TCP, S7comm, IEC 60870-5-104, DNP3, OPC UA, SMB), off the control path and fail-open. See https://silentmesh.me.
 
 ## Running the tests
 

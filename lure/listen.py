@@ -57,7 +57,7 @@ class Alerter:
             "bait_file": bait["file"] if bait else None,
             "planted_on": bait["plant_on"] if bait else None,
             "why": ("a bait credential was used: someone found and tried it" if bait else
-                    "a connection reached the tripwire host, which nothing legitimate uses"),
+                    "a connection reached the listener host, which nothing legitimate uses"),
         }
         key = (src_ip, service, username)
         if now - self.seen.get(key, -1e18) < self.window:
@@ -82,7 +82,7 @@ class Alerter:
                 self.out(json.dumps({"error": f"webhook failed: {e}"}))
         if self.syslog:
             host, _, port = self.syslog.partition(":")
-            msg = f"<10>tripwire: {line}".encode()
+            msg = f"<10>lure: {line}".encode()
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.sendto(msg, (host, int(port or 514)))
 

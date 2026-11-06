@@ -10,8 +10,8 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tripwire.generate import generate
-from tripwire.listen import Alerter, parse_http, parse_rdp, run
+from lure.generate import generate
+from lure.listen import Alerter, parse_http, parse_rdp, run
 
 
 def free_port():

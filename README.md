@@ -6,9 +6,9 @@
 
 **Planted credentials that give the attacker away.** Deceive, never disrupt.
 
-Free credential lures for converged IT/OT networks.
+Free credential lures for everyone, on any network. Built with plants in mind.
 
-Attackers who reach a plant often come in through stolen VPN or jump-host logins, then look for more saved passwords on engineering workstations. Lure plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
+Attackers often get in with a stolen VPN or jump-host login, then look for more saved passwords on the machines they reach. In industrial plants that means engineering workstations and vendor shares. Lure plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
 
 - **No agent, nothing on the control network.** Bait files go on IT-side machines: engineering workstations, jump hosts, vendor shares.
 - **Alerts on use, not on open.** Opening, copying, backing up or antivirus-scanning a bait file does nothing. Only a login attempt with a bait credential fires an alert.

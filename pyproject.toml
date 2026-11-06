@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "silentmesh-lure"
 version = "0.1.0b1"
-description = "Credential lures for IT/OT networks: alert on use, not on open."
+description = "Credential lures for everyone: planted credentials that give the attacker away. Alert on use, not on open."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"

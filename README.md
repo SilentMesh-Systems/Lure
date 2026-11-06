@@ -2,7 +2,7 @@
 
 Free credential tripwires for converged IT/OT networks.
 
-Attackers who reach a plant usually come in through stolen VPN or jump-host logins, then look for more saved passwords on engineering workstations. Tripwire plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
+Attackers who reach a plant often come in through stolen VPN or jump-host logins, then look for more saved passwords on engineering workstations. Tripwire plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
 
 - **No agent, nothing on the control network.** Bait files go on IT-side machines: engineering workstations, jump hosts, vendor shares.
 - **Alerts on use, not on open.** Opening, copying, backing up or antivirus-scanning a bait file does nothing. Only a login attempt with a bait credential fires an alert.

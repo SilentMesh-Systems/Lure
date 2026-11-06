@@ -100,3 +100,54 @@ class EndToEndTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlacementTest(unittest.TestCase):
+    def test_record_sets_location_and_alert_carries_it(self):
+        from lure.generate import record
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+            path = os.path.join(d, "manifest.json")
+            self.assertEqual(record(path, "jump-host.rdp", "ENG-WS-07:Desktop"), 1)
+            self.assertEqual(record(path, "passwords.xlsx", "\\\\files\\eng"), 2)
+            self.assertEqual(record(path, "nope", "x"), 0)
+            with open(path) as f:
+                saved = json.load(f)
+            out = []
+            ev = Alerter(saved, out=out.append).event("rdp", "10.1.1.1", 1, rdp["username"], now=0)
+            self.assertEqual(ev["location"], "ENG-WS-07:Desktop")
+
+
+class VpnPortTest(unittest.TestCase):
+    def test_each_vpn_bait_gets_its_own_port(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d, vpn_count=3)
+            vpns = [b for b in m["baits"] if b["service"] == "openvpn"]
+            self.assertEqual([b["port"] for b in vpns], [1194, 1195, 1196])
+            for b in vpns:
+                with open(os.path.join(d, b["file"])) as f:
+                    self.assertIn(f"remote 10.0.5.20 {b['port']}", f.read())
+            ev = Alerter(m, out=[].append).event("openvpn", "10.1.1.1", 1, None, now=0, local_port=1195)
+            self.assertEqual((ev["severity"], ev["bait_file"]), ("high", vpns[1]["file"]))
+
+    def test_openvpn_connection_end_to_end_names_the_file(self):
+        out = []
+        p_rdp, p_http, p_vpn = free_port(), free_port(), free_port()
+        m = {"baits": [{"username": "vendor_sup_x", "file": "a.ovpn", "service": "openvpn",
+                        "port": p_vpn, "plant_on": "jump host"}]}
+        alerter = Alerter(m, out=out.append)
+
+        async def scenario():
+            task = asyncio.create_task(run(alerter, p_rdp, p_http, openvpn_ports=[p_vpn]))
+            await asyncio.sleep(0.2)
+            r, w = await asyncio.open_connection("127.0.0.1", p_vpn)
+            w.write(b"\x00\x0e\x38")
+            await w.drain()
+            w.close()
+            await asyncio.sleep(5.3)
+            task.cancel()
+
+        asyncio.run(scenario())
+        ev = json.loads(out[0])
+        self.assertEqual((ev["severity"], ev["bait_file"]), ("high", "a.ovpn"))

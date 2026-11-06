@@ -77,7 +77,7 @@ def _xlsx(path, rows):
             z.writestr(name, data)
 
 
-def generate(listener, out_dir, site="plant"):
+def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194):
     """Write the bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`.
@@ -98,15 +98,24 @@ def generate(listener, out_dir, site="plant"):
         )
     baits.append({"file": "jump-host.rdp", "service": "rdp", "username": rdp_user, "plant_on": "engineering workstation desktop"})
 
-    vpn_user, vpn_pw = _token("vendor_sup_"), _password()
-    with open(os.path.join(out_dir, f"{site}-vendor-vpn.ovpn"), "w") as f:
-        f.write(
-            "client\ndev tun\nproto tcp\n"
-            f"remote {listener} 1194\n"
-            "auth-user-pass\nnobind\npersist-key\npersist-tun\nverb 3\n"
-            f"# vendor remote support login: {vpn_user} / {vpn_pw}\n"
-        )
-    baits.append({"file": f"{site}-vendor-vpn.ovpn", "service": "openvpn", "username": vpn_user, "plant_on": "jump host or vendor laptop share"})
+    vpns = []
+    for i in range(max(1, vpn_count)):
+        vpn_user, vpn_pw = _token("vendor_sup_"), _password()
+        port = vpn_port + i
+        name = f"{site}-vendor-vpn.ovpn" if vpn_count <= 1 else f"{site}-vendor-vpn-{i + 1}.ovpn"
+        with open(os.path.join(out_dir, name), "w") as f:
+            f.write(
+                "client\ndev tun\nproto tcp\n"
+                f"remote {listener} {port}\n"
+                "auth-user-pass\nnobind\npersist-key\npersist-tun\nverb 3\n"
+                f"# vendor remote support login: {vpn_user} / {vpn_pw}\n"
+            )
+        # The OpenVPN username travels inside TLS, so each VPN bait gets its own
+        # listener port: the port alone says which file was used.
+        baits.append({"file": name, "service": "openvpn", "username": vpn_user, "port": port,
+                      "plant_on": "jump host or vendor laptop share"})
+        vpns.append((vpn_user, vpn_pw, port))
+    vpn_user, vpn_pw, vpn_port = vpns[0]
 
     web_user, web_pw = _token("scada_ro_"), _password()
     hist_user, hist_pw = _token("svc_hist_"), _password()
@@ -115,7 +124,7 @@ def generate(listener, out_dir, site="plant"):
         ["Jump host (RDP)", f"{listener}:3389", rdp_user, rdp_pw],
         ["SCADA web (read-only)", f"http://{listener}:8080/", web_user, web_pw],
         ["Historian service", f"http://{listener}:8080/historian", hist_user, hist_pw],
-        ["Vendor VPN", f"{listener}:1194", vpn_user, vpn_pw],
+        ["Vendor VPN", f"{listener}:{vpn_port}", vpn_user, vpn_pw],
     ])
     for u, p, what in [(web_user, web_pw, "SCADA web"), (hist_user, hist_pw, "Historian")]:
         baits.append({"file": "passwords.xlsx", "service": "http", "username": u,
@@ -127,6 +136,27 @@ def generate(listener, out_dir, site="plant"):
         "site": site,
         "baits": baits,
     }
+    for b in baits:
+        b.setdefault("location", None)
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
     return manifest
+
+
+def record(manifest_path, bait, location):
+    """Record where a bait was actually planted, e.g. "ENG-WS-07:C:\\Users\\eng\\Desktop".
+
+    bait is a username or a file name; a file name updates every bait in that
+    file (passwords.xlsx holds several). Returns the number of baits updated.
+    """
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    n = 0
+    for b in manifest.get("baits", []):
+        if bait in (b["username"], b["file"]):
+            b["location"] = location
+            n += 1
+    if n:
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+    return n

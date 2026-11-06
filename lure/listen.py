@@ -40,14 +40,19 @@ class Alerter:
 
     def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
+        # Services whose username cannot be read (OpenVPN) are identified by port.
+        self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port")}
         self.webhook, self.syslog, self.out = webhook, syslog, out
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
 
-    def event(self, service, src_ip, src_port, username, now=None):
+    def event(self, service, src_ip, src_port, username, now=None, local_port=None):
         now = time.time() if now is None else now
         bait = self.by_user.get(username) if username else None
+        if bait is None and username is None and local_port in self.by_port:
+            bait = self.by_port[local_port]
+            username = bait["username"]
         ev = {
             "time": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
             "severity": "high" if bait else "medium",
@@ -56,6 +61,7 @@ class Alerter:
             "username": username,
             "bait_file": bait["file"] if bait else None,
             "planted_on": bait["plant_on"] if bait else None,
+            "location": bait.get("location") if bait else None,
             "why": ("a bait credential was used: someone found and tried it" if bait else
                     "a connection reached the listener host, which nothing legitimate uses"),
         }
@@ -73,6 +79,10 @@ class Alerter:
     def _emit(self, ev):
         line = json.dumps(ev)
         self.out(line)
+        try:
+            import sys; sys.stdout.flush()
+        except Exception:
+            pass
         if self.webhook:
             try:
                 req = urllib.request.Request(self.webhook, data=line.encode(),
@@ -90,11 +100,12 @@ class Alerter:
 async def _serve(alerter, service, port, parser, reply):
     async def handle(reader, writer):
         peer = writer.get_extra_info("peername") or ("?", 0)
+        sock = writer.get_extra_info("sockname") or ("?", port)
         try:
             data = await asyncio.wait_for(reader.read(4096), timeout=5)
         except (asyncio.TimeoutError, ConnectionError):
             data = b""
-        alerter.event(service, peer[0], peer[1], parser(data) if parser else None)
+        alerter.event(service, peer[0], peer[1], parser(data) if parser else None, local_port=sock[1])
         try:
             if reply:
                 writer.write(reply)
@@ -109,10 +120,10 @@ HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA
             b"Content-Length: 0\r\nConnection: close\r\n\r\n")
 
 
-async def run(alerter, rdp=3389, http=8080, openvpn=1194):
+async def run(alerter, rdp=3389, http=8080, openvpn=1194, openvpn_ports=None):
+    ports = sorted(set(openvpn_ports or [openvpn]))
     servers = [
         await _serve(alerter, "rdp", rdp, parse_rdp, None),
         await _serve(alerter, "http", http, parse_http, HTTP_401),
-        await _serve(alerter, "openvpn", openvpn, None, None),
-    ]
+    ] + [await _serve(alerter, "openvpn", p, None, None) for p in ports]
     await asyncio.gather(*(s.serve_forever() for s in servers))

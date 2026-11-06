@@ -36,6 +36,15 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    | `plant-vendor-vpn.ovpn` | A vendor remote-support VPN profile with its login in a comment | A jump host or a vendor laptop share |
    | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network:** anyone who reads it knows which logins are fake. | Only on the listener host |
 
+   After planting, record exactly where each bait lives, so the alert can say so:
+
+   ```
+   python3 -m lure record jump-host.rdp "ENG-WS-07:C:\Users\eng\Desktop"
+   python3 -m lure record passwords.xlsx "\\files01\engineering"
+   ```
+
+   Planting VPN profiles in several places? Generate one per place with `--vpn-count 3`. Each gets its own listener port, so the alert names the exact file even though the VPN login itself is encrypted.
+
 3. Run the listener on the listener host:
 
    ```
@@ -53,6 +62,20 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
     "planted_on": "engineering workstation desktop",
     "why": "a bait credential was used: someone found and tried it"}
    ```
+
+## How detection works
+
+A bait file cannot know when it is used. Something has to see the login attempt, and in Lure that is the listener:
+
+1. `lure generate` writes baits whose addresses point **only at your listener host**, never at a real system.
+2. You plant them, and record where with `lure record`.
+3. Anyone who tries a bait has to connect to the listener, so the listener sees the attempt. It reads the bait username from the RDP connection request or the HTTP login; VPN baits are told apart by port.
+4. The listener matches the username or port to the manifest.
+5. You get one alert with the exact bait file, where you planted it, the time, and the source address.
+
+What it does not see: a bait username typed into one of your **real** systems (your actual VPN or Active Directory). Watching real authentication logs for bait usernames is planned for v0.2.
+
+Tested with a real RDP client (FreeRDP 3), which sends the username Lure reads.
 
 ## How alerts are graded
 
@@ -72,7 +95,7 @@ Only plant baits on systems you own or are authorised to protect. The person who
 ## Limits
 
 - This is a beta. It catches people who find and use credentials. It does not detect an attacker who never touches the baits.
-- The OpenVPN listener records the connection only; it does not read the username.
+- The OpenVPN login is encrypted, so VPN baits are identified by their port, not their username.
 - Do not plant baits on the control network, and do not point a bait at a real system.
 
 ## Going further

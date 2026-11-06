@@ -39,15 +39,21 @@ def parse_http(data):
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
-    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None):
+    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None, merge_window=0):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
         # Services whose username cannot be read (OpenVPN) are identified by port.
-        self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port")}
+        # Only live baits own a port; a rotated set reuses the same ports.
+        self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port") and not b.get("retired")}
         self.webhook, self.syslog, self.out = webhook, syslog, out
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
         self.manifest = manifest
+        # Browsers and git first ask without a login, then retry with one. A bare
+        # touch is held this many seconds and dropped if the same source then
+        # uses a bait, so one intrusion makes one alert, not two.
+        self.merge_window = merge_window
+        self.pending = {}
         self.log = log
         self.lock = threading.Lock()
         self.history = []
@@ -73,7 +79,11 @@ class Alerter:
             "bait_file": bait["file"] if bait else None,
             "planted_on": bait["plant_on"] if bait else None,
             "location": bait.get("location") if bait else None,
-            "why": ("a bait credential was used: someone found and tried it" if bait else
+            "retired": bool(bait and bait.get("retired")),
+            "why": ("a retired bait was used: it was taken before the last rotation and is still being tried"
+                    if bait and bait.get("retired") else
+                    "a bait credential was used: someone found and tried it" if bait else
+                    "an unknown login was tried on the listener host, which nothing legitimate uses" if username else
                     "a connection reached the listener host, which nothing legitimate uses"),
         }
         key = (src_ip, service, username)
@@ -84,8 +94,28 @@ class Alerter:
             return None
         self.seen[key] = now
         self.sent.append(now)
+        if bait is None and username is None and self.merge_window:
+            timer = threading.Timer(self.merge_window, self._flush_pending, (src_ip,))
+            timer.daemon = True
+            with self.lock:
+                if src_ip in self.pending:
+                    self.pending[src_ip][1].cancel()
+                self.pending[src_ip] = (ev, timer)
+            timer.start()
+            return ev
+        if bait is not None:
+            with self.lock:
+                held = self.pending.pop(src_ip, None)
+            if held:
+                held[1].cancel()
         self._emit(ev)
         return ev
+
+    def _flush_pending(self, src_ip):
+        with self.lock:
+            held = self.pending.pop(src_ip, None)
+        if held:
+            self._emit(held[0])
 
     def acknowledge(self, alert_id):
         with self.lock:
@@ -102,8 +132,17 @@ class Alerter:
         with self.lock:
             alerts = list(reversed(self.history))
         fired = {a["username"] for a in alerts if a.get("severity") == "high"}
-        baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])]
-        return {"baits": baits, "alerts": alerts}
+        baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])
+                 if not b.get("retired") or b["username"] in fired]
+        # The attacker's path: per source address, the baits used, oldest first.
+        paths = {}
+        for a in reversed(alerts):
+            if a.get("severity") == "high":
+                ip = a["source"].rsplit(":", 1)[0]
+                step = {"time": a["time"], "file": a["bait_file"], "service": a["service"]}
+                if not paths.get(ip) or paths[ip][-1]["file"] != step["file"]:
+                    paths.setdefault(ip, []).append(step)
+        return {"baits": baits, "alerts": alerts, "paths": paths}
 
     def _emit(self, ev):
         line = json.dumps(ev)
@@ -148,7 +187,12 @@ async def _serve(alerter, service, port, parser, reply):
         finally:
             writer.close()
 
-    return await asyncio.start_server(handle, "0.0.0.0", port)
+    try:
+        return await asyncio.start_server(handle, "0.0.0.0", port)
+    except OSError as e:
+        raise SystemExit(f"lure: cannot listen on port {port} for {service} ({e.strerror}). "
+                         "Is another listener already running? Pick free ports with --rdp, --http, "
+                         "or generate VPN baits with a different --vpn-port.") from None
 
 
 HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA\"\r\n"

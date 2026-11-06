@@ -5,6 +5,7 @@ import os
 import socket
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -21,21 +22,69 @@ def free_port():
 
 
 class GenerateTest(unittest.TestCase):
-    def test_bait_set_is_complete_and_unique(self):
+    def test_bait_set_is_complete_unique_and_valid(self):
         with tempfile.TemporaryDirectory() as d:
             m = generate("10.0.5.20", d)
-            names = {b["username"] for b in m["baits"]}
-            self.assertEqual(len(names), len(m["baits"]))
-            for f in ["jump-host.rdp", "plant-vendor-vpn.ovpn", "passwords.xlsx", "manifest.json"]:
+            names = [b["username"] for b in m["baits"]]
+            self.assertEqual(len(names), len(set(names)))
+            files = {b["file"] for b in m["baits"]}
+            for f in files | {"manifest.json"}:
                 self.assertTrue(os.path.exists(os.path.join(d, f)), f)
-            with zipfile.ZipFile(os.path.join(d, "passwords.xlsx")) as z:
+            sheet = next(f for f in files if f.endswith(".xlsx"))
+            with zipfile.ZipFile(os.path.join(d, sheet)) as z:
                 self.assertIsNone(z.testzip())
-                sheet = z.read("xl/worksheets/sheet1.xml").decode()
+                xml = z.read("xl/worksheets/sheet1.xml").decode() + z.read("xl/worksheets/sheet2.xml").decode()
+                self.assertIn("Plant IT", z.read("docProps/core.xml").decode())
             for b in m["baits"]:
-                if b["file"] == "passwords.xlsx":
-                    self.assertIn(b["username"], sheet)
-            with open(os.path.join(d, "jump-host.rdp")) as f:
+                if b["file"] == sheet:
+                    self.assertIn(b["username"], xml)
+            rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+            with open(os.path.join(d, rdp["file"])) as f:
                 self.assertIn("10.0.5.20:3389", f.read())
+
+    def test_baits_look_real(self):
+        import re
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            for b in m["baits"]:
+                # No random hex tails, the classic tell of generated accounts.
+                self.assertIsNone(re.search(r"[0-9a-f]{6}$", b["username"]), b["username"])
+                # Files are backdated weeks or months.
+                age = time.time() - os.path.getmtime(os.path.join(d, b["file"]))
+                self.assertGreater(age, 30 * 86400, b["file"])
+
+    def test_baits_point_at_each_other(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            rdp = next(b for b in m["baits"] if b["service"] == "rdp")["file"]
+            vpn = next(b for b in m["baits"] if b["service"] == "openvpn")["file"]
+            with open(os.path.join(d, vpn)) as f:
+                self.assertIn("RDP file", f.read())
+            eml = next(b for b in m["baits"] if b["file"].endswith(".eml"))["file"]
+            with open(os.path.join(d, eml)) as f:
+                self.assertIn(vpn, f.read())
+            self.assertIn(rdp, next(b for b in m["baits"] if b["service"] == "openvpn")["leads_to"])
+
+    def test_profiles(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d, profile="bank")
+            sheet = next(b["file"] for b in m["baits"] if b["file"].endswith(".xlsx"))
+            with zipfile.ZipFile(os.path.join(d, sheet)) as z:
+                self.assertIn("Core banking", z.read("xl/worksheets/sheet1.xml").decode())
+            with self.assertRaises(ValueError):
+                generate("10.0.5.20", d, profile="nope")
+
+    def test_rotate_keeps_old_baits_alerting(self):
+        from lure.generate import rotate
+        with tempfile.TemporaryDirectory() as d:
+            old = generate("10.0.5.20", d)
+            new = rotate(os.path.join(d, "manifest.json"))
+            live = [b for b in new["baits"] if not b.get("retired")]
+            retired = [b for b in new["baits"] if b.get("retired")]
+            self.assertEqual(len(retired), len(old["baits"]))
+            self.assertFalse({b["username"] for b in live} & {b["username"] for b in retired})
+            ev = Alerter(new, out=[].append).event("http", "10.9.9.9", 1, retired[0]["username"], now=0)
+            self.assertEqual((ev["severity"], ev["retired"]), ("high", True))
 
 
 class ParseTest(unittest.TestCase):
@@ -108,9 +157,11 @@ class PlacementTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             m = generate("10.0.5.20", d)
             rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+            sheet = next(b["file"] for b in m["baits"] if b["file"].endswith(".xlsx"))
+            n_sheet = sum(1 for b in m["baits"] if b["file"] == sheet)
             path = os.path.join(d, "manifest.json")
-            self.assertEqual(record(path, "jump-host.rdp", "ENG-WS-07:Desktop"), 1)
-            self.assertEqual(record(path, "passwords.xlsx", "\\\\files\\eng"), 2)
+            self.assertEqual(record(path, rdp["file"], "ENG-WS-07:Desktop"), 1)
+            self.assertEqual(record(path, sheet, "\\\\files\\eng"), n_sheet)
             self.assertEqual(record(path, "nope", "x"), 0)
             with open(path) as f:
                 saved = json.load(f)
@@ -192,3 +243,55 @@ class DashboardTest(unittest.TestCase):
             again = Alerter(m, out=[].append, log=log)
             self.assertEqual(len(again.history), 1)
             self.assertTrue(again.history[0]["acknowledged"])
+
+
+class PathTest(unittest.TestCase):
+    def test_attacker_path_in_order(self):
+        m = {"baits": [{"username": "a", "file": "sheet.xlsx", "service": "http", "plant_on": "s"},
+                       {"username": "b", "file": "jump.rdp", "service": "rdp", "plant_on": "d"}]}
+        al = Alerter(m, out=[].append)
+        al.event("http", "10.1.1.7", 1, "a", now=100)
+        al.event("rdp", "10.1.1.7", 2, "b", now=200)
+        path = al.state()["paths"]["10.1.1.7"]
+        self.assertEqual([s["file"] for s in path], ["sheet.xlsx", "jump.rdp"])
+
+
+class GitCredentialTest(unittest.TestCase):
+    def test_git_credential_url_is_well_formed(self):
+        from urllib.parse import urlsplit, unquote
+        with tempfile.TemporaryDirectory() as d:
+            for _ in range(20):
+                m = generate("10.0.5.20", d)
+                b = next(b for b in m["baits"] if b["file"] == ".git-credentials")
+                with open(os.path.join(d, ".git-credentials")) as f:
+                    u = urlsplit(f.read().strip())
+                self.assertEqual((u.hostname, u.port, unquote(u.username)), ("10.0.5.20", 8080, b["username"]))
+
+
+class MergeTest(unittest.TestCase):
+    def test_bare_probe_folds_into_bait_use(self):
+        out = []
+        m = {"baits": [{"username": "u", "file": ".git-credentials", "service": "http", "plant_on": "home"}]}
+        a = Alerter(m, out=out.append, merge_window=0.5)
+        a.event("http", "10.2.2.2", 1, None)
+        a.event("http", "10.2.2.2", 2, "u")
+        time.sleep(0.8)
+        self.assertEqual([json.loads(x)["severity"] for x in out], ["high"])
+
+    def test_bare_probe_alone_still_alerts(self):
+        out = []
+        a = Alerter({"baits": []}, out=out.append, merge_window=0.3)
+        a.event("http", "10.3.3.3", 1, None)
+        time.sleep(0.6)
+        self.assertEqual([json.loads(x)["severity"] for x in out], ["medium"])
+
+
+    def test_unknown_login_is_never_folded_away(self):
+        out = []
+        m = {"baits": [{"username": "u", "file": "a.rdp", "service": "rdp", "plant_on": "desk"}]}
+        a = Alerter(m, out=out.append, merge_window=0.3)
+        a.event("http", "10.4.4.4", 1, "admin")
+        a.event("rdp", "10.4.4.4", 2, "u")
+        time.sleep(0.6)
+        sev = sorted(json.loads(x)["severity"] for x in out)
+        self.assertEqual(sev, ["high", "medium"])

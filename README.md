@@ -27,14 +27,21 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    python3 -m lure generate --listener 10.0.5.20 --out baits
    ```
 
-   This writes:
+   This writes six bait files, written to be believed:
 
-   | File | What it looks like | Where to plant it |
+   | Bait | What it looks like | Where to plant it |
    |---|---|---|
-   | `passwords.xlsx` | A real spreadsheet of logins: jump host, SCADA web, historian, vendor VPN | An engineering share or a workstation's Documents folder |
-   | `jump-host.rdp` | A saved Remote Desktop connection with a username filled in | An engineering workstation desktop |
-   | `plant-vendor-vpn.ovpn` | A vendor remote-support VPN profile with its login in a comment | A jump host or a vendor laptop share |
-   | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network:** anyone who reads it knows which logins are fake. | Only on the listener host |
+   | A spreadsheet such as `passwords_FINAL_v2.xlsx` | A real workbook from "Plant IT", months old, with a Notes column, a "temporary" shared admin row ("TODO: rotate after shutdown") and an "Old - do not use" sheet | A file share or a Documents folder |
+   | `DO NOT DELETE - JUMP-OT-01.rdp` | A saved Remote Desktop connection with a username filled in | An engineering workstation desktop |
+   | `Siemens support VPN (old).ovpn` | A vendor VPN profile with its login in a comment, and a hint about the RDP file | A jump host or vendor laptop share |
+   | `passwords.csv` | A browser password export | A Downloads folder |
+   | `.git-credentials` | A git credential store; real `git` will send this login | A home directory |
+   | `Re- Siemens remote access.eml` | An email that leaks a temporary login and points at the VPN profile and the spreadsheet | A mailbox export or Documents folder |
+   | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network.** | Only on the listener host |
+
+   Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_historian2`, `siemens.support`), never random strings, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
+
+   Pick vocabulary that fits the place with `--profile plant` (default), `office`, `bank` or `hospital`.
 
    After planting, record exactly where each bait lives, so the alert can say so:
 
@@ -44,6 +51,8 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    ```
 
    Planting VPN profiles in several places? Generate one per place with `--vpn-count 3`. Each gets its own listener port, so the alert names the exact file even though the VPN login itself is encrypted.
+
+   Rotate the whole set from time to time with `lure rotate`. Fresh baits are written, and the old ones stay in the manifest as retired: anyone who stole them earlier still triggers an alert.
 
 3. Run the listener on the listener host:
 
@@ -85,10 +94,16 @@ What it does not see: a bait username typed into one of your **real** systems (y
 
 Tested with a real RDP client (FreeRDP 3), which sends the username Lure reads.
 
+## The attacker's path
+
+Alerts from the same source address are joined into a path on the dashboard, oldest first: for example the spreadsheet, then the RDP file, then the VPN. You see how far someone got and in what order.
+
 ## How alerts are graded
 
 - **high:** a bait username was used. Someone found a planted file and tried it.
-- **medium:** something connected to the listener host without a bait username. Nothing legitimate should connect at all, so this is still worth a look. A scanner you run yourself is the usual cause.
+- **medium:** something connected to the listener host without a bait username, or tried an unknown login. A bare request that is followed within seconds by a bait login (browsers and git always try once without a login) is folded into that one high alert.
+- **retired:** a high alert from a rotated-out bait, meaning it was taken before the last rotation.
+  Nothing legitimate should connect at all, so a medium alert is still worth a look. A scanner you run yourself is the usual cause.
 
 The same source, service and username alert once per 10 minutes, with at most 20 alerts per 10 minutes overall, so one attacker cannot flood your pager.
 

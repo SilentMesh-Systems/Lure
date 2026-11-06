@@ -3,7 +3,7 @@ import asyncio
 import json
 
 from . import __version__
-from .generate import generate, record
+from .generate import PROFILES, generate, record, rotate
 from .listen import Alerter, run
 
 
@@ -16,8 +16,14 @@ def main():
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
     g.add_argument("--out", default="baits")
     g.add_argument("--site", default="plant")
+    g.add_argument("--profile", default="plant", choices=sorted(PROFILES),
+                   help="vocabulary that fits the place: plant, office, bank or hospital")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
+
+    ro = sub.add_parser("rotate", help="replace the baits with fresh ones; old ones keep alerting")
+    ro.add_argument("--manifest", default="baits/manifest.json")
+    ro.add_argument("--profile", choices=sorted(PROFILES))
 
     r = sub.add_parser("record", help="record where a bait was actually planted")
     r.add_argument("bait", help="bait username or file name")
@@ -38,8 +44,16 @@ def main():
 
     a = p.parse_args()
     if a.cmd == "generate":
-        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port)
-        print(f"wrote {len(m['baits'])} bait credentials to {a.out}/ (see manifest.json for where to plant each)")
+        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile)
+        files = sorted({b["file"] for b in m["baits"]})
+        print(f"wrote {len(m['baits'])} bait credentials in {len(files)} files to {a.out}/ (see manifest.json for where to plant each)")
+        for name in files:
+            print(f"  {name}")
+    elif a.cmd == "rotate":
+        kw = {"profile": a.profile} if a.profile else {}
+        m = rotate(a.manifest, **kw)
+        live = [b for b in m["baits"] if not b.get("retired")]
+        print(f"rotated: {len(live)} fresh baits written; {len(m['baits']) - len(live)} retired baits still alert")
     elif a.cmd == "record":
         n = record(a.manifest, a.bait, a.location)
         if not n:
@@ -50,7 +64,7 @@ def main():
             manifest = json.load(f)
         import os
         log = a.log or os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
-        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log)
+        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log, merge_window=8)
         if a.ui:
             from .ui import serve
             serve(alerter, a.ui_host, a.ui_port)

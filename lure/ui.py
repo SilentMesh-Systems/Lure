@@ -65,7 +65,7 @@ footer{grid-column:1/-1;text-align:center;color:var(--dim);font:11px ui-monospac
  <div class="nums"><div><b id="n-baits">0</b><span>planted</span></div><div><b id="n-open">0</b><span>open</span></div><div><b id="n-all">0</b><span>all alerts</span></div></div>
 </section>
 <section class="glass"><h2>Alert feed</h2><div class="feed" id="feed"></div></section>
-<section class="glass"><h2>Baits</h2><div class="tiles" id="tiles"></div></section>
+<section class="glass"><h2>Attacker path</h2><div class="feed" id="paths"></div><h2 style="margin-top:24px">Baits</h2><div class="tiles" id="tiles"></div></section>
 <footer>Deceive, never disrupt.</footer>
 </main>
 <script>
@@ -77,7 +77,7 @@ function render(st){
     if(!a.acknowledged)open++;
     var c=el('div','ev '+a.severity+(a.acknowledged?' ack':''));
     var r=el('div','row');
-    r.appendChild(el('div','what',a.severity==='high'?('Bait used: '+(a.bait_file||'')):'Someone touched the listener'));
+    r.appendChild(el('div','what',a.severity==='high'?((a.retired?'Retired bait used: ':'Bait used: ')+(a.bait_file||'')):'Someone touched the listener'));
     r.appendChild(el('div','when',(a.time||'').replace('T',' ').replace('+00:00',' UTC')));
     c.appendChild(r);
     if(a.location||a.planted_on)c.appendChild(el('div','where',a.location||a.planted_on));
@@ -92,6 +92,10 @@ function render(st){
     var x=el('div');x.appendChild(el('div','f',b.file+(b.port?' :'+b.port:'')));x.appendChild(el('div','w',(b.triggered?'TRIGGERED · ':'')+(b.location||b.plant_on||'')));
     t.appendChild(x);tiles.appendChild(t);
   });
+  var pe=document.getElementById('paths');pe.textContent='';var ips=Object.keys(st.paths||{});
+  if(!ips.length)pe.appendChild(el('div','empty','No trail yet.'));
+  ips.forEach(function(ip){var c=el('div','ev');c.appendChild(el('div','what',ip));
+    st.paths[ip].forEach(function(s,i){c.appendChild(el('div','src',(i+1)+'. '+s.file+'  ('+s.service+', '+(s.time||'').slice(11,19)+' UTC)'));});pe.appendChild(c);});
   var n=st.baits.length,q=n?Math.round(100*(n-hit)/n):100;
   document.getElementById('pct').textContent=q+'%';
   document.getElementById('ring').style.setProperty('--deg',(q*3.6)+'deg');

@@ -1,3 +1,5 @@
+<img src="assets/lure-mark-128.png" width="96" alt="SilentMesh Lure mark">
+
 # SilentMesh Lure (beta)
 
 **Planted credentials that give the attacker away.** Deceive, never disrupt.

@@ -11,6 +11,8 @@ Attackers who reach a plant often come in through stolen VPN or jump-host logins
 
 ## Quick start
 
+No install step: clone the repo and run it with `python3 -m tripwire` from the repo folder (or `pip install .`).
+
 1. Pick a tripwire host: any spare Linux machine or VM on the IT side that nobody legitimately logs into.
 
 2. Generate the bait set, pointing it at that host:
@@ -26,7 +28,7 @@ Attackers who reach a plant often come in through stolen VPN or jump-host logins
    | `passwords.xlsx` | A real spreadsheet of logins: jump host, SCADA web, historian, vendor VPN | An engineering share or a workstation's Documents folder |
    | `jump-host.rdp` | A saved Remote Desktop connection with a username filled in | An engineering workstation desktop |
    | `plant-vendor-vpn.ovpn` | A vendor remote-support VPN profile with its login in a comment | A jump host or a vendor laptop share |
-   | `manifest.json` | Which username belongs to which bait. **Keep this off the network.** | Only on the tripwire host |
+   | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network:** anyone who reads it knows which logins are fake. | Only on the tripwire host |
 
 3. Run the listener on the tripwire host:
 
@@ -56,6 +58,10 @@ The same source, service and username alert once per 10 minutes, with at most 20
 ## Data handling
 
 Tripwire runs entirely on your own machines. The listener records the connecting IP and port, the service, the time and the username it was offered. It sends that only to the sinks you configure. Passwords sent to the listener are never read or stored. SilentMesh receives no data.
+
+## Use responsibly
+
+Only plant baits on systems you own or are authorised to protect. The person who runs the listener controls the data it records (IP addresses and usernames can be personal data, for example under India's DPDP Act 2023) and is responsible for handling it under their own law.
 
 ## Limits
 

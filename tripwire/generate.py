@@ -96,8 +96,7 @@ def generate(listener, out_dir, site="plant"):
             "screen mode id:i:2\n"
             "authentication level:i:2\n"
         )
-    baits.append({"file": "jump-host.rdp", "service": "rdp", "username": rdp_user,
-                  "password": rdp_pw, "plant_on": "engineering workstation desktop"})
+    baits.append({"file": "jump-host.rdp", "service": "rdp", "username": rdp_user, "plant_on": "engineering workstation desktop"})
 
     vpn_user, vpn_pw = _token("vendor_sup_"), _password()
     with open(os.path.join(out_dir, f"{site}-vendor-vpn.ovpn"), "w") as f:
@@ -107,8 +106,7 @@ def generate(listener, out_dir, site="plant"):
             "auth-user-pass\nnobind\npersist-key\npersist-tun\nverb 3\n"
             f"# vendor remote support login: {vpn_user} / {vpn_pw}\n"
         )
-    baits.append({"file": f"{site}-vendor-vpn.ovpn", "service": "openvpn", "username": vpn_user,
-                  "password": vpn_pw, "plant_on": "jump host or vendor laptop share"})
+    baits.append({"file": f"{site}-vendor-vpn.ovpn", "service": "openvpn", "username": vpn_user, "plant_on": "jump host or vendor laptop share"})
 
     web_user, web_pw = _token("scada_ro_"), _password()
     hist_user, hist_pw = _token("svc_hist_"), _password()
@@ -121,7 +119,7 @@ def generate(listener, out_dir, site="plant"):
     ])
     for u, p, what in [(web_user, web_pw, "SCADA web"), (hist_user, hist_pw, "Historian")]:
         baits.append({"file": "passwords.xlsx", "service": "http", "username": u,
-                      "password": p, "plant_on": f"engineering share ({what} row)"})
+                      "plant_on": f"engineering share ({what} row)"})
 
     manifest = {
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),

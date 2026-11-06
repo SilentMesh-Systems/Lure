@@ -2,12 +2,14 @@ import argparse
 import asyncio
 import json
 
+from . import __version__
 from .generate import generate
 from .listen import Alerter, run
 
 
 def main():
     p = argparse.ArgumentParser(prog="lure", description="Credential lures for IT/OT networks.")
+    p.add_argument("--version", action="version", version=f"lure v{__version__} by SilentMesh")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("generate", help="write a set of bait files")

@@ -151,3 +151,44 @@ class VpnPortTest(unittest.TestCase):
         asyncio.run(scenario())
         ev = json.loads(out[0])
         self.assertEqual((ev["severity"], ev["bait_file"]), ("high", "a.ovpn"))
+
+
+class DashboardTest(unittest.TestCase):
+    def test_state_ack_and_csrf_guard(self):
+        import urllib.request, urllib.error
+        from lure.ui import serve
+        with tempfile.TemporaryDirectory() as d:
+            m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "service": "http", "plant_on": "share"}]}
+            log = os.path.join(d, "alerts.jsonl")
+            a = Alerter(m, out=[].append, log=log)
+            a.event("http", "10.1.1.1", 1, "u1", now=0)
+            port = free_port()
+            srv = serve(a, "127.0.0.1", port)
+            try:
+                base = f"http://127.0.0.1:{port}"
+                page = urllib.request.urlopen(base + "/").read().decode()
+                self.assertIn("SilentMesh", page)
+                st = json.loads(urllib.request.urlopen(base + "/api/state").read())
+                self.assertTrue(st["baits"][0]["triggered"])
+                self.assertEqual(st["alerts"][0]["severity"], "high")
+
+                def post(ctype, origin):
+                    req = urllib.request.Request(base + "/api/ack", data=b'{"id": 1}', method="POST",
+                                                 headers={"Content-Type": ctype, "Origin": origin})
+                    try:
+                        return urllib.request.urlopen(req).status
+                    except urllib.error.HTTPError as e:
+                        return e.code
+
+                self.assertEqual(post("text/plain", base), 403)
+                self.assertEqual(post("application/json", "https://evil.example"), 403)
+                self.assertEqual(post("application/json", base), 200)
+                st = json.loads(urllib.request.urlopen(base + "/api/state").read())
+                self.assertTrue(st["alerts"][0]["acknowledged"])
+            finally:
+                srv.shutdown()
+                srv.server_close()
+            # History survives a restart through the log file.
+            again = Alerter(m, out=[].append, log=log)
+            self.assertEqual(len(again.history), 1)
+            self.assertTrue(again.history[0]["acknowledged"])

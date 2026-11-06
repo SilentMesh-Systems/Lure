@@ -28,6 +28,10 @@ def main():
     l.add_argument("--manifest", default="baits/manifest.json")
     l.add_argument("--webhook", help="POST each alert as JSON to this URL")
     l.add_argument("--syslog", help="host[:port] for UDP syslog")
+    l.add_argument("--ui", action="store_true", help="serve a local dashboard (default http://127.0.0.1:8765)")
+    l.add_argument("--ui-host", default="127.0.0.1", help="dashboard address; keep 127.0.0.1 unless you know why")
+    l.add_argument("--ui-port", type=int, default=8765)
+    l.add_argument("--log", help="append alerts to this JSON-lines file (default: alerts.jsonl next to the manifest)")
     l.add_argument("--rdp", type=int, default=3389)
     l.add_argument("--http", type=int, default=8080)
     l.add_argument("--openvpn", type=int, default=1194, help="only used for a manifest without VPN ports; otherwise the ports written into the VPN baits are used")
@@ -44,7 +48,13 @@ def main():
     else:
         with open(a.manifest) as f:
             manifest = json.load(f)
-        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog)
+        import os
+        log = a.log or os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
+        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log)
+        if a.ui:
+            from .ui import serve
+            serve(alerter, a.ui_host, a.ui_port)
+            print(f"dashboard: http://{a.ui_host}:{a.ui_port}/", flush=True)
         vpn_ports = [b["port"] for b in manifest.get("baits", []) if b.get("service") == "openvpn" and b.get("port")]
         ports = ", ".join(str(p) for p in sorted(set(vpn_ports or [a.openvpn])))
         print(f"listening: rdp {a.rdp}, http {a.http}, openvpn {ports}", flush=True)

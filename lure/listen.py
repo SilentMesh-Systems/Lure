@@ -11,6 +11,7 @@ import base64
 import json
 import re
 import socket
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -38,7 +39,7 @@ def parse_http(data):
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
-    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print):
+    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
         # Services whose username cannot be read (OpenVPN) are identified by port.
         self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port")}
@@ -46,6 +47,16 @@ class Alerter:
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
+        self.manifest = manifest
+        self.log = log
+        self.lock = threading.Lock()
+        self.history = []
+        if log:
+            try:
+                with open(log) as f:
+                    self.history = [json.loads(line) for line in f if line.strip()]
+            except FileNotFoundError:
+                pass
 
     def event(self, service, src_ip, src_port, username, now=None, local_port=None):
         now = time.time() if now is None else now
@@ -76,8 +87,32 @@ class Alerter:
         self._emit(ev)
         return ev
 
+    def acknowledge(self, alert_id):
+        with self.lock:
+            for ev in self.history:
+                if ev.get("id") == alert_id:
+                    ev["acknowledged"] = True
+                    if self.log:
+                        with open(self.log, "w") as f:
+                            f.writelines(json.dumps(e) + "\n" for e in self.history)
+                    return True
+        return False
+
+    def state(self):
+        with self.lock:
+            alerts = list(reversed(self.history))
+        fired = {a["username"] for a in alerts if a.get("severity") == "high"}
+        baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])]
+        return {"baits": baits, "alerts": alerts}
+
     def _emit(self, ev):
         line = json.dumps(ev)
+        with self.lock:
+            ev = dict(ev, id=len(self.history) + 1, acknowledged=False)
+            self.history.append(ev)
+            if self.log:
+                with open(self.log, "a") as f:
+                    f.write(json.dumps(ev) + "\n")
         self.out(line)
         try:
             import sys; sys.stdout.flush()
@@ -127,3 +162,4 @@ async def run(alerter, rdp=3389, http=8080, openvpn=1194, openvpn_ports=None):
         await _serve(alerter, "http", http, parse_http, HTTP_401),
     ] + [await _serve(alerter, "openvpn", p, None, None) for p in ports]
     await asyncio.gather(*(s.serve_forever() for s in servers))
+

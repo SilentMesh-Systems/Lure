@@ -63,6 +63,14 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
     "why": "a bait credential was used: someone found and tried it"}
    ```
 
+## Local dashboard
+
+```
+python3 -m lure listen --manifest baits/manifest.json --ui
+```
+
+Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet or triggered, and where it is planted) and a live alert feed with a "Mark investigated" button. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
+
 ## How detection works
 
 A bait file cannot know when it is used. Something has to see the login attempt, and in Lure that is the listener:

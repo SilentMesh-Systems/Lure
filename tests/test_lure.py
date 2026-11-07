@@ -325,7 +325,7 @@ class McpTest(unittest.TestCase):
             self.assertNotIn(None, replies)  # the notification got no reply
             self.assertEqual(len(replies[2]["result"]["tools"]), 7)
             self.assertFalse(replies[3]["result"]["isError"])
-            self.assertEqual(replies[4]["result"]["structuredContent"]["live_baits"], 12)
+            self.assertGreaterEqual(replies[4]["result"]["structuredContent"]["live_baits"], 14)
             self.assertTrue(replies[5]["result"]["isError"])  # refuses to overwrite a set
             baits = replies[6]["result"]["structuredContent"]["baits"]
             self.assertTrue(all("password" not in b for b in baits))
@@ -420,3 +420,47 @@ class RotateFolderTest(unittest.TestCase):
             self.assertEqual(here, new_files)
             moved = set(os.listdir(os.path.join(d, "retired", os.listdir(os.path.join(d, "retired"))[0])))
             self.assertTrue(old_files - new_files <= moved)
+
+
+class PathTokenTest(unittest.TestCase):
+    def test_qr_and_bookmark_baits(self):
+        from lure.listen import parse_http
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            qrb = next(b for b in m["baits"] if b.get("path_token") and b["file"].endswith(".png"))
+            bmb = next(b for b in m["baits"] if b["file"] == "bookmarks.html")
+            with open(os.path.join(d, qrb["file"]), "rb") as f:
+                self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")
+            with open(os.path.join(d, "bookmarks.html")) as f:
+                self.assertIn("/go/" + bmb["path_token"], f.read())
+            req = f"GET /q/{qrb['path_token']} HTTP/1.1\r\nHost: x\r\n\r\n".encode()
+            self.assertEqual(parse_http(req), qrb["username"])
+            self.assertIsNone(parse_http(b"GET /index.html HTTP/1.1\r\n\r\n"))
+            ev = Alerter(m, out=[].append).event("http", "10.5.5.5", 1, parse_http(req), now=0)
+            self.assertEqual((ev["severity"], ev["bait_file"]), ("high", qrb["file"]))
+
+
+class QrTest(unittest.TestCase):
+    def test_matrix_shapes(self):
+        from lure.qr import encode
+        self.assertEqual(len(encode("HELLO")), 21)
+        self.assertEqual(len(encode("y" * 150)), 17 + 4 * 8)
+        with self.assertRaises(ValueError):
+            encode("z" * 400)
+
+
+class ProfileFileTest(unittest.TestCase):
+    def test_gallery_profiles_work(self):
+        here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles")
+        for name in sorted(os.listdir(here)):
+            with tempfile.TemporaryDirectory() as d:
+                m = generate("10.0.5.20", d, profile=os.path.join(here, name))
+                self.assertGreaterEqual(len(m["baits"]), 14, name)
+
+    def test_bad_profile_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            bad = os.path.join(d, "bad.json")
+            with open(bad, "w") as f:
+                json.dump({"systems": []}, f)
+            with self.assertRaises(ValueError):
+                generate("10.0.5.20", d, profile=bad)

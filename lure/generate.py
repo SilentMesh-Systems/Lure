@@ -83,6 +83,26 @@ PROFILES = {
 }
 
 
+REQUIRED_KEYS = ("systems", "jump", "vendors", "words", "sheet", "event", "dept")
+
+
+def load_profile(profile):
+    """A built-in profile name, or a path to a JSON profile (see profiles/ for examples)."""
+    if profile in PROFILES:
+        return PROFILES[profile]
+    if str(profile).endswith(".json") and os.path.exists(profile):
+        with open(profile) as f:
+            p = json.load(f)
+        missing = [k for k in REQUIRED_KEYS if k not in p]
+        if missing:
+            raise ValueError(f"profile {profile} is missing: {', '.join(missing)}")
+        if len(p["systems"]) < 2 or not all(len(s) == 3 for s in p["systems"]):
+            raise ValueError("profile systems must be at least two [title, path, username base] entries")
+        p["systems"] = [tuple(s) for s in p["systems"]]
+        return p
+    raise ValueError(f"unknown profile {profile!r}; choose from {', '.join(PROFILES)} or give a .json profile file")
+
+
 class _Names:
     """Hands out believable usernames, never the same one twice in a set."""
 
@@ -209,9 +229,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     retired: baits from an earlier set (see rotate); they stay in the manifest
     so a credential stolen months ago still raises an alert.
     """
-    if profile not in PROFILES:
-        raise ValueError(f"unknown profile {profile!r}; choose from {', '.join(PROFILES)}")
-    p = PROFILES[profile]
+    p = load_profile(profile)
     os.makedirs(out_dir, exist_ok=True)
     names = _Names(b["username"] for b in (retired or []))
     baits, files = [], []
@@ -322,6 +340,27 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
                 f"Regards,\n{person}\n{p['dept']}\n")
     files.append(eml_name)
     add(eml_name, "http", eu, "a mailbox export or Documents folder", [vpn_names[0], sheet_name])
+
+    # 7. A QR code on an "IT helpdesk" notice: scanning it opens a URL with a token.
+    from .qr import encode, to_png
+    qr_label = _rng.choice(["vpn-setup", "wifi-guest", "helpdesk", "mfa-reset"]) + "-" + str(_rng.randint(10, 99))
+    qr_name = _rng.choice(["IT helpdesk - scan to set up VPN.png", "guest wifi QR (print).png", "MFA reset QR - IT.png"])
+    to_png(encode(f"{web}/q/{qr_label}"), os.path.join(out_dir, qr_name), scale=10)
+    files.append(qr_name)
+    add(qr_name, "http", "~" + qr_label, "printed on a notice board, or in a shared Pictures folder", path_token=qr_label)
+
+    # 8. Browser bookmarks: an exported favourites file with admin consoles in it.
+    bm_label = _rng.choice(["admin-console", "backup-portal", "firewall-ui", "hypervisor"]) + "-" + str(_rng.randint(10, 99))
+    bm_name = "bookmarks.html"
+    links = [(f"{title} (admin)", f"{web}{path}") for title, path, _ in p["systems"]]
+    links.insert(1, ("Admin console (do not share)", f"{web}/go/{bm_label}"))
+    with open(os.path.join(out_dir, bm_name), "w") as f:
+        f.write("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"
+                "<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n    <DT><H3>IT</H3>\n    <DL><p>\n"
+                + "".join(f'        <DT><A HREF="{u}">{escape(n)}</A>\n' for n, u in links)
+                + "    </DL><p>\n</DL><p>\n")
+    files.append(bm_name)
+    add(bm_name, "http", "~" + bm_label, "an admin's browser profile or Documents folder", path_token=bm_label)
 
     for name in files:
         _backdate(os.path.join(out_dir, name), when - timedelta(minutes=_rng.randint(0, 600)))

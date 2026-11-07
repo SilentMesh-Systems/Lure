@@ -3,7 +3,7 @@
 **Planted credentials that give the attacker away.** A quiet safety net for any network, from a home router to a data centre. Free and open source (Apache-2.0).
 
 ## What it does
-`lure generate` writes six believable bait files with fake logins:
+`lure generate` writes eight believable bait files with fake logins:
 - a messy password workbook
 - a saved Remote Desktop file
 - a vendor VPN profile
@@ -24,10 +24,12 @@ They point at each other the way real ones do. `lure listen` waits on a spare ma
 - **`lure watch`:** catches bait usernames typed into your real systems, from their logs (SSH, VPN, RADIUS, web, Windows 4625/4771).
 - **DNS baits** (`--dns-zone`): a bait hostname that alerts on lookup, through almost any firewall.
 - **Alerts formatted for Slack, Teams, Discord and Telegram.**
+- **QR-code and bookmark baits:** scanning the QR or opening the bookmarked console raises an alert.
+- **Bring your own profile** as a JSON file; legal, education and retail examples included.
 - **Runs on Python 3.9 and newer,** standard library only. Tested on Linux (x86-64 and ARM, including Raspberry Pi) and Windows.
 
 ## Verified before release
-- **Automated tests:** 26 tests pass on CI for Linux x86-64, Linux ARM and Windows.
+- **Automated tests:** 30 tests pass on CI for Linux x86-64, Linux ARM and Windows.
 - **Real-client tests:**
   - real `git` sends the `.git-credentials` bait
   - a real RDP client (FreeRDP 3) uses the RDP bait

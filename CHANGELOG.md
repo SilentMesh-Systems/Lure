@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.1.0-beta (8 Nov 2026)
+- QR-code bait (standard-library QR encoder, verified with OpenCV) and a browser bookmarks bait; the listener spots tokens in the URL path.
+- Custom profiles from JSON (`--profile file.json`), with legal, education and retail examples in profiles/.
+- Monthly rotation recipe (cron or MCP).
 - `lure watch`: alerts when a bait username appears in real authentication logs (SSH, VPN, RADIUS, web, Windows 4625/4771 exports).
 - DNS baits: `--dns-zone` adds a bait hostname; the listener answers the delegated zone and alerts on lookups.
 - Webhook alerts formatted for Slack, Teams, Discord and Telegram.

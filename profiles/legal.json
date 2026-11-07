@@ -1,0 +1,41 @@
+{
+  "systems": [
+    [
+      "Case management",
+      "/cases",
+      "case.admin"
+    ],
+    [
+      "Document vault",
+      "/docs",
+      "dms_svc"
+    ],
+    [
+      "Billing",
+      "/billing",
+      "billing.adm"
+    ]
+  ],
+  "jump": "JUMP-LAW-01",
+  "vendors": [
+    "Manupatra partner",
+    "SCC Online",
+    "LexisNexis",
+    "Zoho"
+  ],
+  "words": [
+    "Counsel",
+    "Brief",
+    "Docket",
+    "Chamber",
+    "Summer",
+    "Diwali"
+  ],
+  "sheet": [
+    "passwords_FINAL_v2.xlsx",
+    "chamber logins.xlsx",
+    "case_access_2025.xlsx"
+  ],
+  "event": "the bar audit",
+  "dept": "Office IT"
+}

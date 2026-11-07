@@ -25,10 +25,15 @@ def parse_rdp(data):
     return m.group(1).decode("utf-8", "replace").strip() if m else None
 
 
+HTTP_PATH_TOKEN = re.compile(rb"^[A-Z]+ /(?:q|go|s)/([a-z0-9-]{4,40})[/?\s]", re.I)
+
+
 def parse_http(data):
     m = HTTP_AUTH.search(data)
     if not m:
-        return None
+        # A token in the path: QR codes and bookmarks carry no login, only a URL.
+        p = HTTP_PATH_TOKEN.search(data)
+        return ("~" + p.group(1).decode().lower()) if p else None
     try:
         user = base64.b64decode(m.group(1)).decode("utf-8", "replace").split(":", 1)[0]
     except ValueError:

@@ -46,7 +46,7 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    python3 -m lure generate --listener 10.0.5.20 --out baits
    ```
 
-   This writes six bait files, written to be believed:
+   This writes eight bait files, written to be believed:
 
    | Bait | What it looks like | Where to plant it |
    |---|---|---|
@@ -56,11 +56,13 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    | `passwords.csv` | A browser password export | A Downloads folder |
    | `.git-credentials` | A git credential store; real `git` will send this login | A home directory |
    | `Re- Infosys remote access.eml` | An email that leaks a temporary login and points at the VPN profile and the spreadsheet | A mailbox export or Documents folder |
+   | A QR notice such as `IT helpdesk - scan to set up VPN.png` | A QR code that opens a URL with a hidden token. Scanning it raises an alert | A notice board, a printed poster, or a shared Pictures folder |
+   | `bookmarks.html` | An exported browser favourites file with admin consoles in it, one carrying a token | An admin's browser profile or Documents folder |
    | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network.** | Only on the listener host |
 
    Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_vcenter2`, `vendor.infosys`), never random strings, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
 
-   Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `home` (router, NAS, CCTV, for a Raspberry Pi at home), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES).
+   Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `home` (router, NAS, CCTV, for a Raspberry Pi at home), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES). Or bring your own: copy `profiles/legal.json` (also `education.json`, `retail.json`), change the systems, vendors and wording, and pass the file with `--profile my-org.json`. Pull requests with new profiles are welcome.
 
    After planting, record exactly where each bait lives, so the alert can say so:
 
@@ -72,6 +74,15 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
    Planting VPN profiles in several places? Generate one per place with `--vpn-count 3`. Each gets its own listener port, so the alert names the exact file even though the VPN login itself is encrypted.
 
    Rotate the whole set from time to time with `lure rotate`. Fresh baits are written, the old files move into `retired/`, and the old credentials stay in the manifest: anyone who stole them earlier still triggers an alert.
+
+   **Keep them fresh.** Rotate monthly with cron, or ask your AI agent to do it over MCP:
+
+   ```
+   # crontab -e : 03:00 on the 1st of every month
+   0 3 1 * * cd /opt/lure && python3 -m lure rotate --manifest baits/manifest.json && systemctl restart lure-listen
+   ```
+
+   Then replant the new files listed in `baits/`.
 
 3. Run the listener on the listener host:
 

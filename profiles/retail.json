@@ -1,0 +1,41 @@
+{
+  "systems": [
+    [
+      "POS back office",
+      "/pos",
+      "pos.manager"
+    ],
+    [
+      "Inventory",
+      "/inventory",
+      "inv_svc"
+    ],
+    [
+      "Online store admin",
+      "/shop",
+      "shop.admin"
+    ]
+  ],
+  "jump": "STORE-SRV-01",
+  "vendors": [
+    "Shopify partner",
+    "Pine Labs",
+    "Tally partner",
+    "Airtel"
+  ],
+  "words": [
+    "Store",
+    "Sale",
+    "Festive",
+    "Billing",
+    "Summer",
+    "Diwali"
+  ],
+  "sheet": [
+    "passwords_FINAL_v2.xlsx",
+    "store logins.xlsx",
+    "pos_access_2025.xlsx"
+  ],
+  "event": "the festive sale",
+  "dept": "Store IT"
+}

@@ -1,0 +1,41 @@
+{
+  "systems": [
+    [
+      "Student portal admin",
+      "/sis",
+      "sis.admin"
+    ],
+    [
+      "LMS (Moodle)",
+      "/lms",
+      "moodle_adm"
+    ],
+    [
+      "Exam server",
+      "/exam",
+      "exam.svc"
+    ]
+  ],
+  "jump": "JUMP-CAMPUS-01",
+  "vendors": [
+    "Tata Edge",
+    "Fedena",
+    "Moodle partner",
+    "Jio"
+  ],
+  "words": [
+    "Campus",
+    "Exam",
+    "Semester",
+    "Library",
+    "Monsoon",
+    "Diwali"
+  ],
+  "sheet": [
+    "passwords_FINAL_v2.xlsx",
+    "college IT logins.xlsx",
+    "exam_access_2025.xlsx"
+  ],
+  "event": "semester results",
+  "dept": "Campus IT"
+}

@@ -16,15 +16,15 @@ def main():
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
     g.add_argument("--out", default="baits")
     g.add_argument("--site", default="site")
-    g.add_argument("--profile", default="it", choices=sorted(PROFILES),
-                   help="vocabulary that fits the place: it (default), office, home, plant, bank or hospital")
+    g.add_argument("--profile", default="it",
+                   help="it (default), office, home, plant, bank, hospital, or a JSON profile file such as profiles/legal.json")
     g.add_argument("--dns-zone", help="a subdomain delegated to the listener (NS record); adds a DNS bait hostname")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
 
     ro = sub.add_parser("rotate", help="replace the baits with fresh ones; old ones keep alerting")
     ro.add_argument("--manifest", default="baits/manifest.json")
-    ro.add_argument("--profile", choices=sorted(PROFILES))
+    ro.add_argument("--profile", help="built-in profile name or a JSON profile file")
 
     r = sub.add_parser("record", help="record where a bait was actually planted")
     r.add_argument("bait", help="bait username or file name")

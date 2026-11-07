@@ -15,6 +15,25 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 - **Your alerts go only to you.** The listener sends alerts to your own webhook, syslog or terminal. No SilentMesh service is involved, and nothing is sent to us.
 - **Tested on Linux (x86-64 and ARM, including Raspberry Pi) and Windows,** Python 3.9 and newer, standard library only. macOS is not yet supported. Apache-2.0.
 
+## Use cases
+
+| Who | How Lure helps |
+|---|---|
+| **Company IT** (default `it` profile) | A safety net behind the firewall and endpoint tools: bait spreadsheets on file servers, a saved RDP file on admin desktops, a vendor VPN profile on the jump host. The first password hunt raises the alarm |
+| **Ransomware early warning** | Ransomware crews harvest credentials for days before they encrypt. A bait used on day one gives you those days back |
+| **Lost laptops and leaked backups** | Bait files inside a stolen laptop, backup or mailbox export fire when someone tries them, even months later, because rotated baits keep alerting |
+| **Developers** | A bait `.git-credentials` catches anyone raiding home directories for code access. Real `git` sends it |
+| **Small offices** (`office`) | Payroll, Tally and HR baits on the accounts PC. No security team needed: one alert to your webhook |
+| **Homes** (`home`) | A Raspberry Pi as the listener, router, NAS and CCTV baits on the family PC. Someone on your Wi-Fi hunting passwords pings your phone |
+| **Banks, hospitals, plants** (`bank`, `hospital`, `plant`) | Core banking, HIS and PACS, or SCADA and historian logins, in the vocabulary of the place |
+| **MSSPs and IT service firms** | A free control for every client, alerting into their SIEM over syslog or webhook |
+| **Incident response** | Plant baits mid-investigation. If they fire, the attacker is still inside, and the attacker's path shows where they went |
+| **Red and blue teams** | Did the red team take the bait, and how fast did the blue team see it? |
+| **AI agents** (MCP) | An agent checks Lure daily, rotates baits, records placements, and turns an alert and its path into an incident note |
+| **Teaching and workshops** | Deception you can show live on a laptop or a Pi in ten minutes |
+
+Not covered yet: bait logins typed into your real systems such as Active Directory or the real VPN (log watchers are planned for v0.2), and macOS.
+
 ## Quick start
 
 No install step: clone the repo and run it with `python3 -m lure` from the repo folder (or `pip install .`).

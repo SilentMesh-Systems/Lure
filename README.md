@@ -32,7 +32,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 | **AI agents** (MCP) | An agent checks Lure daily, rotates baits, records placements, and turns an alert and its path into an incident note |
 | **Teaching and workshops** | Deception you can show live on a laptop or a Pi in ten minutes |
 
-Not covered yet: bait logins typed into your real systems such as Active Directory or the real VPN (log watchers are planned for v0.2), and macOS.
+Not covered yet: cloud bait keys (AWS, Azure), QR-code baits, a hosted demo listener, and macOS.
 
 ## Quick start
 
@@ -71,7 +71,7 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
 
    Planting VPN profiles in several places? Generate one per place with `--vpn-count 3`. Each gets its own listener port, so the alert names the exact file even though the VPN login itself is encrypted.
 
-   Rotate the whole set from time to time with `lure rotate`. Fresh baits are written, and the old ones stay in the manifest as retired: anyone who stole them earlier still triggers an alert.
+   Rotate the whole set from time to time with `lure rotate`. Fresh baits are written, the old files move into `retired/`, and the old credentials stay in the manifest: anyone who stole them earlier still triggers an alert.
 
 3. Run the listener on the listener host:
 
@@ -91,6 +91,33 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
     "location": "FIN-WS-07:C:\\Users\\admin\\Desktop",
     "why": "a bait credential was used: someone found and tried it"}
    ```
+
+## Catch bait logins on your real systems
+
+An attacker may type a bait login into your **real** VPN, Active Directory, SSH or web login instead of the listener. Lure can watch those systems' logs and alert when a bait username appears:
+
+```
+python3 -m lure watch /var/log/auth.log /var/log/openvpn.log --manifest baits/manifest.json
+# or alongside the listener:
+python3 -m lure listen --manifest baits/manifest.json --watch /var/log/auth.log
+```
+
+It reads any plain-text log: Linux auth logs, VPN and RADIUS logs, web server logs, or Windows Security events forwarded to syslog or exported with `wevtutil qe Security /f:text` (failed logons 4625 and 4771 carry the user name). Only whole account names match, with or without a `DOMAIN\` part.
+
+## DNS baits (work through almost any firewall)
+
+Delegate a spare subdomain to the listener host with an NS record (for example `backup.example.com`), then:
+
+```
+python3 -m lure generate --listener 10.0.5.20 --out baits --dns-zone backup.example.com
+python3 -m lure listen --manifest baits/manifest.json      # also answers DNS on UDP 53
+```
+
+The spreadsheet and the email then mention an old backup share such as `\\vault16.backup.example.com\backup`. Anyone who tries to reach it makes a DNS lookup that ends at your listener, from any tool, and you get a high alert. Names outside your zone are refused.
+
+## Alerts where you already look
+
+`--webhook` formats each alert for the platform automatically: Slack (blocks), Microsoft Teams (cards), Discord and Telegram. Any other URL receives the plain JSON alert.
 
 ## Local dashboard
 
@@ -136,7 +163,7 @@ A bait file cannot know when it is used. Something has to see the login attempt,
 4. The listener matches the username or port to the manifest.
 5. You get one alert with the exact bait file, where you planted it, the time, and the source address.
 
-What it does not see: a bait username typed into one of your **real** systems (your actual VPN or Active Directory). Watching real authentication logs for bait usernames is planned for v0.2.
+Bait logins typed into your **real** systems are caught by `lure watch`, which follows their authentication logs (see above).
 
 Tested with a real RDP client (FreeRDP 3), which sends the username Lure reads.
 

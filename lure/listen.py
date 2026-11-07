@@ -36,6 +36,41 @@ def parse_http(data):
     return user or None
 
 
+def _summary(ev):
+    if ev.get("severity") == "high":
+        head = ("Retired bait used: " if ev.get("retired") else "Bait used: ") + str(ev.get("bait_file"))
+    else:
+        head = "Someone touched the Lure listener"
+    where = ev.get("location") or ev.get("planted_on") or ""
+    return head, where
+
+
+def webhook_payload(url, ev):
+    """Shape the alert for the webhook's platform; plain JSON for everything else."""
+    head, where = _summary(ev)
+    lines = [f"*{head}*" if "slack" in url else head]
+    if where:
+        lines.append(f"Planted: {where}")
+    lines.append(f"From {ev.get('source')} over {ev.get('service')}" + (f" as {ev['username']}" if ev.get("username") else ""))
+    lines.append(f"{ev.get('time')} · severity {ev.get('severity')}")
+    text = "\n".join(lines)
+    if "hooks.slack.com" in url:
+        return {"text": text, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}},
+                                         {"type": "context", "elements": [{"type": "mrkdwn", "text": "SilentMesh Lure · " + ev.get("why", "")}]}]}
+    if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
+        return {"username": "Lure", "content": text}
+    if "office.com" in url or "webhook.office" in url or "logic.azure.com" in url:
+        return {"@type": "MessageCard", "@context": "https://schema.org/extensions",
+                "themeColor": "FF7A59" if ev.get("severity") == "high" else "F2C14E",
+                "summary": head, "title": head,
+                "sections": [{"facts": [{"name": k, "value": str(v)} for k, v in
+                              [("Planted", where), ("Source", ev.get("source")), ("Service", ev.get("service")),
+                               ("Username", ev.get("username")), ("Time", ev.get("time")), ("Why", ev.get("why"))] if v]}]}
+    if "api.telegram.org" in url:
+        return {"text": text}
+    return ev
+
+
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
@@ -64,7 +99,7 @@ class Alerter:
             except FileNotFoundError:
                 pass
 
-    def event(self, service, src_ip, src_port, username, now=None, local_port=None):
+    def event(self, service, src_ip, src_port, username, now=None, local_port=None, source_detail=None):
         now = time.time() if now is None else now
         bait = self.by_user.get(username) if username else None
         if bait is None and username is None and local_port in self.by_port:
@@ -80,12 +115,18 @@ class Alerter:
             "planted_on": bait["plant_on"] if bait else None,
             "location": bait.get("location") if bait else None,
             "retired": bool(bait and bait.get("retired")),
-            "why": ("a retired bait was used: it was taken before the last rotation and is still being tried"
+            "why": ("a bait username appeared in a real system's log: someone tried it against a real service"
+                    if bait and service.startswith("log:") else
+                    "a bait hostname was looked up: someone found it and tried to reach it"
+                    if bait and service == "dns" else
+                    "a retired bait was used: it was taken before the last rotation and is still being tried"
                     if bait and bait.get("retired") else
                     "a bait credential was used: someone found and tried it" if bait else
                     "an unknown login was tried on the listener host, which nothing legitimate uses" if username else
                     "a connection reached the listener host, which nothing legitimate uses"),
         }
+        if source_detail:
+            ev["detail"] = source_detail
         key = (src_ip, service, username)
         if now - self.seen.get(key, -1e18) < self.window:
             return None
@@ -159,7 +200,7 @@ class Alerter:
             pass
         if self.webhook:
             try:
-                req = urllib.request.Request(self.webhook, data=line.encode(),
+                req = urllib.request.Request(self.webhook, data=json.dumps(webhook_payload(self.webhook, ev)).encode(),
                                              headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5).close()
             except OSError as e:
@@ -199,11 +240,14 @@ HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA
             b"Content-Length: 0\r\nConnection: close\r\n\r\n")
 
 
-async def run(alerter, rdp=3389, http=8080, openvpn=1194, openvpn_ports=None):
+async def run(alerter, rdp=3389, http=8080, openvpn=1194, openvpn_ports=None, dns_zone=None, dns_port=53):
     ports = sorted(set(openvpn_ports or [openvpn]))
     servers = [
         await _serve(alerter, "rdp", rdp, parse_rdp, None),
         await _serve(alerter, "http", http, parse_http, HTTP_401),
     ] + [await _serve(alerter, "openvpn", p, None, None) for p in ports]
+    if dns_zone:
+        from .dnstoken import serve as serve_dns
+        await serve_dns(alerter, dns_zone, dns_port)
     await asyncio.gather(*(s.serve_forever() for s in servers))
 

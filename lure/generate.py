@@ -201,7 +201,7 @@ def _xlsx(path, sheets, author, created, modified):
 
 
 def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
-             http_port=8080, rdp_port=3389, retired=None):
+             http_port=8080, rdp_port=3389, retired=None, dns_zone=None):
     """Write a convincing bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`. Pick one
@@ -278,6 +278,12 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
              for r in sys_rows]
     rows.append(["Shared admin (temporary)", f"{web}/admin", shared_user, shared_pw,
                  f"TODO: rotate after {p['event']}", mod])
+    dns_label = None
+    if dns_zone:
+        dns_label = _rng.choice(["nas-archive", "backup", "fs-old", "vault", "share-arch"]) + str(_rng.randint(2, 19)).zfill(2)
+        du, dpw = names.service("backup"), _password(p["words"])
+        rows.append(["Backup NAS (old)", f"\\\\{dns_label}.{dns_zone}\\backup", du, dpw, "still mounted on some PCs", mod])
+        add(sheet_name, "dns", du, "file share (backup NAS row)", dns_label=dns_label)
     rows.append([f"{vendor} VPN", f"{listener}:{vpns[0][2]}", vpns[0][0], vpns[0][1],
                  f"vendor only, profile on jump host ({vpn_names[0]})", mod])
     _xlsx(os.path.join(out_dir, sheet_name),
@@ -311,7 +317,8 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
                 f"Subject: Re: {vendor} remote access\nDate: {sent}\n\n"
                 f"Hi,\n\nTemporary web login for your engineer until the VPN is sorted:\n\n"
                 f"  {web}/vendor\n  user: {eu}\n  pass: {epw}\n\n"
-                f"The VPN profile is on the jump host ({vpn_names[0]}). Full list is in {sheet_name} on the share.\n\n"
+                f"The VPN profile is on the jump host ({vpn_names[0]}). Full list is in {sheet_name} on the share.\n"
+                + (f"Old backups are still on \\\\{dns_label}.{dns_zone}\\backup if you need them.\n" if dns_label else "") + "\n"
                 f"Regards,\n{person}\n{p['dept']}\n")
     files.append(eml_name)
     add(eml_name, "http", eu, "a mailbox export or Documents folder", [vpn_names[0], sheet_name])
@@ -324,6 +331,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         "listener": listener,
         "site": site,
         "profile": profile,
+        "dns_zone": dns_zone,
         "baits": baits + [dict(b, retired=True) for b in (retired or [])],
     }
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
@@ -341,6 +349,14 @@ def rotate(manifest_path, out_dir=None, **kwargs):
         old = json.load(f)
     retired = [dict(b, retired=True) for b in old.get("baits", [])]
     out_dir = out_dir or os.path.dirname(os.path.abspath(manifest_path))
+    # Move the old bait files aside so the folder holds only the fresh set.
+    old_dir = os.path.join(out_dir, "retired", datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"))
+    for name in sorted({b["file"] for b in old.get("baits", []) if not b.get("retired")}):
+        src = os.path.join(out_dir, name)
+        if os.path.exists(src):
+            os.makedirs(old_dir, exist_ok=True)
+            os.replace(src, os.path.join(old_dir, name))
+    kwargs.setdefault("dns_zone", old.get("dns_zone"))
     return generate(old["listener"], out_dir, site=old.get("site", "site"),
                     profile=kwargs.pop("profile", old.get("profile", "it")), retired=retired, **kwargs)
 

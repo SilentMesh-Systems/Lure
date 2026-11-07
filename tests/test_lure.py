@@ -344,3 +344,79 @@ class McpTest(unittest.TestCase):
             aid = s.lure_alerts(severity="high")["alerts"][0]["id"]
             s.lure_acknowledge(aid)
             self.assertEqual(s.lure_alerts(open_only=True)["matching"], 0)
+
+
+class WatchTest(unittest.TestCase):
+    def test_bait_username_in_real_logs(self):
+        from lure.watch import Watcher
+        m = {"baits": [{"username": "r.patil_adm", "file": "x.rdp", "service": "rdp", "plant_on": "desk"}]}
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "auth.log")
+            with open(log, "w") as f:
+                f.write("Nov  7 10:00:01 vpn sshd[1]: Failed password for alice from 10.0.0.5 port 2 ssh2\n")
+            out = []
+            w = Watcher(Alerter(m, out=out.append), [log])
+            with open(log, "a") as f:
+                f.write("Nov  7 10:00:09 vpn sshd[1]: Failed password for r.patil_adm from 10.9.8.7 port 5 ssh2\n")
+                f.write("An account failed to log on. Account Name: CORP\\\\R.PATIL_ADM Source Network Address: 10.9.8.8\n")
+                f.write("Failed login for r.patil_adm2 from 10.1.1.1\n")
+            hits = w.poll()
+            self.assertEqual([h["source"] for h in hits], ["10.9.8.7:0", "10.9.8.8:0"])
+            self.assertTrue(all(h["severity"] == "high" and "real system" in h["why"] for h in hits))
+
+
+class DnsTest(unittest.TestCase):
+    def test_dns_bait_lookup_alerts(self):
+        from lure.dnstoken import serve, parse_qname
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d, dns_zone="backup.example.com")
+            b = next(b for b in m["baits"] if b["service"] == "dns")
+            out = []
+            a = Alerter(m, out=out.append)
+            port = free_port()
+
+            def query(name):
+                q = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+                for part in name.split("."):
+                    q += bytes([len(part)]) + part.encode()
+                return q + b"\x00\x00\x01\x00\x01"
+
+            async def scenario():
+                t = await serve(a, "backup.example.com", port)
+                loop = asyncio.get_running_loop()
+                cli, _ = await loop.create_datagram_endpoint(asyncio.DatagramProtocol, remote_addr=("127.0.0.1", port))
+                cli.sendto(query(f"{b['dns_label']}.backup.example.com"))
+                cli.sendto(query("google.com"))
+                await asyncio.sleep(0.3)
+                cli.close(); t.close()
+
+            asyncio.run(scenario())
+            self.assertEqual(parse_qname(query("A.Example.com"))[1], "a.example.com")
+            evs = [json.loads(x) for x in out]
+            self.assertEqual(len(evs), 1)
+            self.assertEqual((evs[0]["severity"], evs[0]["service"]), ("high", "dns"))
+
+
+class WebhookFormatTest(unittest.TestCase):
+    def test_platform_payloads(self):
+        from lure.listen import webhook_payload
+        ev = {"severity": "high", "bait_file": "a.rdp", "location": "WS-1", "source": "1.2.3.4:5",
+              "service": "rdp", "username": "u", "time": "t", "why": "w"}
+        self.assertIn("blocks", webhook_payload("https://hooks.slack.com/services/x", ev))
+        self.assertEqual(webhook_payload("https://outlook.office.com/webhook/x", ev)["@type"], "MessageCard")
+        self.assertIn("content", webhook_payload("https://discord.com/api/webhooks/x", ev))
+        self.assertEqual(webhook_payload("https://example.com/hook", ev), ev)
+
+
+class RotateFolderTest(unittest.TestCase):
+    def test_rotate_moves_old_files_aside(self):
+        from lure.generate import rotate
+        with tempfile.TemporaryDirectory() as d:
+            old = generate("10.0.5.20", d)
+            old_files = {b["file"] for b in old["baits"]}
+            new = rotate(os.path.join(d, "manifest.json"))
+            new_files = {b["file"] for b in new["baits"] if not b.get("retired")}
+            here = set(os.listdir(d)) - {"manifest.json", "retired"}
+            self.assertEqual(here, new_files)
+            moved = set(os.listdir(os.path.join(d, "retired", os.listdir(os.path.join(d, "retired"))[0])))
+            self.assertTrue(old_files - new_files <= moved)

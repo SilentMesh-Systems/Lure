@@ -1,6 +1,10 @@
 # Changelog
 
 ## 0.1.0-beta (8 Nov 2026)
+- `lure watch`: alerts when a bait username appears in real authentication logs (SSH, VPN, RADIUS, web, Windows 4625/4771 exports).
+- DNS baits: `--dns-zone` adds a bait hostname; the listener answers the delegated zone and alerts on lookups.
+- Webhook alerts formatted for Slack, Teams, Discord and Telegram.
+- `lure rotate` moves old bait files into retired/.
 - MCP server: `lure mcp` exposes status, alerts, baits, generate, record, rotate and acknowledge to AI agents over stdio; standard library only; passwords never returned.
 - `home` profile: router, NAS and CCTV baits for personal and small-office networks.
 - Baits rewritten to be believed: real-looking usernames, human file names, backdated files and Office metadata, a messy workbook with notes, a planted "temporary" admin and an old sheet.

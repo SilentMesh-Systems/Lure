@@ -21,18 +21,23 @@ They point at each other the way real ones do. `lure listen` waits on a spare ma
 - **Profiles:** `it` (default), `office`, `home`, `bank`, `hospital` and `plant`.
 - **`lure rotate`:** fresh baits; old ones keep alerting, which catches credentials stolen earlier.
 - **`lure record`:** stores exactly where each bait was planted.
+- **`lure watch`:** catches bait usernames typed into your real systems, from their logs (SSH, VPN, RADIUS, web, Windows 4625/4771).
+- **DNS baits** (`--dns-zone`): a bait hostname that alerts on lookup, through almost any firewall.
+- **Alerts formatted for Slack, Teams, Discord and Telegram.**
 - **Runs on Python 3.9 and newer,** standard library only. Tested on Linux (x86-64 and ARM, including Raspberry Pi) and Windows.
 
 ## Verified before release
-- **Automated tests:** 22 tests pass on CI for Linux x86-64, Linux ARM and Windows.
+- **Automated tests:** 26 tests pass on CI for Linux x86-64, Linux ARM and Windows.
 - **Real-client tests:**
   - real `git` sends the `.git-credentials` bait
   - a real RDP client (FreeRDP 3) uses the RDP bait
   - the HTTP baits work with curl and browsers
   - the official MCP Python SDK client connects to the MCP server
+  - `dig` lookups of a DNS bait, and an SSH log line with a bait username, both raise high alerts
 
 ## Known limits
-- It sees bait logins only when they are tried against the listener. A bait username typed into a real VPN or Active Directory is not seen yet (planned).
+- Real-system detection depends on the logs you point `lure watch` at.
+- Not yet: cloud bait keys, QR-code baits, a hosted demo listener.
 - macOS is not yet supported.
 - This is a beta, supported on a best-effort basis.
 

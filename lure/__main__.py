@@ -30,6 +30,10 @@ def main():
     r.add_argument("location", help='for example "ENG-WS-07:C:\\Users\\eng\\Desktop"')
     r.add_argument("--manifest", default="baits/manifest.json")
 
+    mc = sub.add_parser("mcp", help="run an MCP server over stdio so AI agents can use Lure")
+    mc.add_argument("--manifest", default="baits/manifest.json")
+    mc.add_argument("--log", help="alert log written by `lure listen` (default: alerts.jsonl next to the manifest)")
+
     l = sub.add_parser("listen", help="alert when a bait credential is used")
     l.add_argument("--manifest", default="baits/manifest.json")
     l.add_argument("--webhook", help="POST each alert as JSON to this URL")
@@ -54,6 +58,9 @@ def main():
         m = rotate(a.manifest, **kw)
         live = [b for b in m["baits"] if not b.get("retired")]
         print(f"rotated: {len(live)} fresh baits written; {len(m['baits']) - len(live)} retired baits still alert")
+    elif a.cmd == "mcp":
+        from .mcp import serve_stdio
+        serve_stdio(a.manifest, a.log)
     elif a.cmd == "record":
         n = record(a.manifest, a.bait, a.location)
         if not n:

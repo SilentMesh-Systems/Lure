@@ -300,3 +300,47 @@ class MergeTest(unittest.TestCase):
         time.sleep(0.6)
         sev = sorted(json.loads(x)["severity"] for x in out)
         self.assertEqual(sev, ["high", "medium"])
+
+
+class McpTest(unittest.TestCase):
+    def test_protocol_and_tools(self):
+        import io
+        from lure.mcp import serve_stdio
+        with tempfile.TemporaryDirectory() as d:
+            man = os.path.join(d, "manifest.json")
+            msgs = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "lure_generate", "arguments": {"listener": "10.0.5.20"}}},
+                {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "lure_status", "arguments": {}}},
+                {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "lure_generate", "arguments": {"listener": "x"}}},
+                {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "lure_baits", "arguments": {}}},
+                {"jsonrpc": "2.0", "id": 7, "method": "nope"},
+            ]
+            out = io.StringIO()
+            serve_stdio(man, stdin=io.StringIO("\n".join(json.dumps(m) for m in msgs) + "\n"), stdout=out)
+            replies = {r["id"]: r for r in map(json.loads, out.getvalue().splitlines())}
+            self.assertEqual(replies[1]["result"]["serverInfo"]["name"], "lure")
+            self.assertNotIn(None, replies)  # the notification got no reply
+            self.assertEqual(len(replies[2]["result"]["tools"]), 7)
+            self.assertFalse(replies[3]["result"]["isError"])
+            self.assertEqual(replies[4]["result"]["structuredContent"]["live_baits"], 12)
+            self.assertTrue(replies[5]["result"]["isError"])  # refuses to overwrite a set
+            baits = replies[6]["result"]["structuredContent"]["baits"]
+            self.assertTrue(all("password" not in b for b in baits))
+            self.assertEqual(replies[7]["error"]["code"], -32601)
+
+    def test_alerts_and_acknowledge(self):
+        import io
+        from lure.mcp import Server
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            u = m["baits"][0]["username"]
+            a = Alerter(m, out=[].append, log=os.path.join(d, "alerts.jsonl"))
+            a.event("rdp", "10.1.1.9", 1, u, now=0)
+            s = Server(os.path.join(d, "manifest.json"))
+            self.assertEqual(s.lure_status()["open_alerts"], 1)
+            aid = s.lure_alerts(severity="high")["alerts"][0]["id"]
+            s.lure_acknowledge(aid)
+            self.assertEqual(s.lure_alerts(open_only=True)["matching"], 0)

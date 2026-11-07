@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.1.0-beta (8 Nov 2026)
+- MCP server: `lure mcp` exposes status, alerts, baits, generate, record, rotate and acknowledge to AI agents over stdio; standard library only; passwords never returned.
+- `home` profile: router, NAS and CCTV baits for personal and small-office networks.
 - Baits rewritten to be believed: real-looking usernames, human file names, backdated files and Office metadata, a messy workbook with notes, a planted "temporary" admin and an old sheet.
 - New baits: browser password export, .git-credentials (real git sends it), and a leaky email; baits reference each other.
 - Profiles: plant, office, bank, hospital. `lure rotate` replaces baits while old ones keep alerting.

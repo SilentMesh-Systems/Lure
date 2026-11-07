@@ -81,6 +81,32 @@ python3 -m lure listen --manifest baits/manifest.json --ui
 
 Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet or triggered, and where it is planted) and a live alert feed with a "Mark investigated" button. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
 
+## Use it from an AI agent (MCP)
+
+Lure includes an MCP server, so an AI assistant can plant baits, check them and read alerts for you:
+
+```
+python3 -m lure mcp --manifest baits/manifest.json
+```
+
+Add it to your MCP client. For Claude Code: `claude mcp add lure -- python3 -m lure mcp --manifest /path/to/baits/manifest.json`. For Claude Desktop or any client using a JSON config:
+
+```json
+{"mcpServers": {"lure": {"command": "python3", "args": ["-m", "lure", "mcp", "--manifest", "/path/to/baits/manifest.json"]}}}
+```
+
+| Tool | What it does |
+|---|---|
+| `lure_status` | Baits live and retired, which were used, open alerts, the attacker's path, and a one-line verdict |
+| `lure_alerts` | Recent alerts, filtered by severity or open only |
+| `lure_baits` | Every live bait and where it is planted. Never returns passwords |
+| `lure_generate` | Write a new bait set (refuses to overwrite an existing one) |
+| `lure_record` | Record where a bait was planted |
+| `lure_rotate` | Fresh baits; old ones stay retired and keep alerting |
+| `lure_acknowledge` | Mark an alert investigated |
+
+Ask it things like *"Has anyone touched a bait this week?"* or *"Rotate the baits and tell me which files to replant."* The server reads the manifest and the alert log that `lure listen` writes; it contacts nothing on the network.
+
 ## How detection works
 
 A bait file cannot know when it is used. Something has to see the login attempt, and in Lure that is the listener:

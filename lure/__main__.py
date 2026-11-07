@@ -17,7 +17,7 @@ def main():
     g.add_argument("--out", default="baits")
     g.add_argument("--site", default="site")
     g.add_argument("--profile", default="it", choices=sorted(PROFILES),
-                   help="vocabulary that fits the place: it (default), office, plant, bank or hospital")
+                   help="vocabulary that fits the place: it (default), office, home, plant, bank or hospital")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
 

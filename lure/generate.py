@@ -40,6 +40,14 @@ PROFILES = {
         "sheet": ["passwords_FINAL_v2.xlsx", "IT logins - keep safe.xlsx", "admin_accounts_2025.xlsx"],
         "event": "the audit", "dept": "IT Support",
     },
+    "home": {
+        "systems": [("Router admin", "/router", "admin.router"), ("NAS / photo backup", "/nas", "family.nas"),
+                    ("CCTV recorder", "/cctv", "cctv.view")],
+        "jump": "HOME-PC", "vendors": ["Airtel", "Jio", "ACT", "Excitel"],
+        "words": ["Family", "Home", "Sunshine", "Cricket", "Diwali", "Monsoon"],
+        "sheet": ["my passwords.xlsx", "passwords (keep safe).xlsx", "home logins 2025.xlsx"],
+        "event": "the router change", "dept": "Home",
+    },
     "plant": {
         "systems": [("SCADA web (read-only)", "/scada", "scada_ro"), ("Historian", "/historian", "svc_historian"),
                     ("MES reports", "/mes", "mes.report")],
@@ -197,7 +205,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     """Write a convincing bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`. Pick one
-    nothing legitimate ever logs into. profile: it (default), office, plant, bank or hospital.
+    nothing legitimate ever logs into. profile: it (default), office, home, plant, bank or hospital.
     retired: baits from an earlier set (see rotate); they stay in the manifest
     so a credential stolen months ago still raises an alert.
     """

@@ -4,9 +4,9 @@
 
 *Lure by SilentMesh*
 
-**Planted credentials that give the attacker away.** Deceive, never disrupt.
+**Planted credentials that give the attacker away.** A quiet safety net for any network, from a home router to a data centre. Deceive, never disrupt.
 
-Free credential lures for everyone, on any network: offices, data centres, banks, hospitals and industrial plants.
+Free credential lures for everyone, on any network: homes, small offices, company IT, data centres, banks, hospitals and industrial plants.
 
 Attackers often get in with a stolen VPN or jump-host login, then look for more saved passwords on the machines they reach: admin desktops, file shares, home directories and old emails. Lure plants fake ones for them to find. If anyone tries to use one, you get an alert that says which file was found and where you planted it.
 
@@ -41,7 +41,7 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
 
    Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_vcenter2`, `vendor.infosys`), never random strings, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
 
-   Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES).
+   Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `home` (router, NAS, CCTV, for a Raspberry Pi at home), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES).
 
    After planting, record exactly where each bait lives, so the alert can say so:
 

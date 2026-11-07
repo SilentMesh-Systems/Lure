@@ -73,6 +73,11 @@ class GenerateTest(unittest.TestCase):
                 self.assertIn("Core banking", z.read("xl/worksheets/sheet1.xml").decode())
             with self.assertRaises(ValueError):
                 generate("10.0.5.20", d, profile="nope")
+        for prof in ("it", "office", "home", "plant", "bank", "hospital"):
+            with tempfile.TemporaryDirectory() as d:
+                m = generate("10.0.5.20", d, profile=prof)
+                self.assertEqual(m["profile"], prof)
+                self.assertGreaterEqual(len(m["baits"]), 12)
 
     def test_rotate_keeps_old_baits_alerting(self):
         from lure.generate import rotate

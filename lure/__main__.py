@@ -38,6 +38,16 @@ def main():
     w.add_argument("--syslog")
     w.add_argument("--from-start", action="store_true", help="scan existing lines too, not only new ones")
 
+    aw = sub.add_parser("aws", help="AWS bait keys: create one, or watch CloudTrail for their use")
+    aw.add_argument("action", choices=["create", "watch"])
+    aw.add_argument("--manifest", default="baits/manifest.json")
+    aw.add_argument("--aws-profile", help="AWS credentials profile used to create and watch (not the bait)")
+    aw.add_argument("--region", default="us-east-1", help="CloudTrail region to watch (IAM and most console calls land in us-east-1)")
+    aw.add_argument("--interval", type=int, default=300)
+    aw.add_argument("--user-name", help="IAM user name for the bait (default svc-backup-sync)")
+    aw.add_argument("--webhook")
+    aw.add_argument("--once", action="store_true", help="check once and exit")
+
     mc = sub.add_parser("mcp", help="run an MCP server over stdio so AI agents can use Lure")
     mc.add_argument("--manifest", default="baits/manifest.json")
     mc.add_argument("--log", help="alert log written by `lure listen` (default: alerts.jsonl next to the manifest)")
@@ -77,6 +87,20 @@ def main():
         alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log)
         print(f"watching {len(a.logs)} log file(s) for {len(alerter.by_user)} bait usernames", flush=True)
         Watcher(alerter, a.logs, from_start=a.from_start).run()
+    elif a.cmd == "aws":
+        import os
+        from . import aws
+        if a.action == "create":
+            r = aws.create_bait_key(os.path.dirname(os.path.abspath(a.manifest)), a.manifest, a.aws_profile, a.user_name)
+            print(f"created IAM user {r['iam_user']} (no permissions) and bait key {r['access_key_id']}")
+            print(f"  wrote {r['file']}; plant it, then run: lure aws watch --manifest {a.manifest}")
+        else:
+            with open(a.manifest) as f:
+                manifest = json.load(f)
+            log = os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
+            alerter = Alerter(manifest, webhook=a.webhook, log=log)
+            print(f"watching CloudTrail ({a.region}) every {a.interval}s for AWS bait keys", flush=True)
+            aws.watch(alerter, a.aws_profile, a.region, a.interval, once=a.once)
     elif a.cmd == "mcp":
         from .mcp import serve_stdio
         serve_stdio(a.manifest, a.log)

@@ -464,3 +464,17 @@ class ProfileFileTest(unittest.TestCase):
                 json.dump({"systems": []}, f)
             with self.assertRaises(ValueError):
                 generate("10.0.5.20", d, profile=bad)
+
+
+class AwsSigningTest(unittest.TestCase):
+    def test_sigv4_matches_aws_documented_example(self):
+        # The IAM ListUsers example from the AWS Signature Version 4 documentation.
+        import datetime
+        from lure.aws import _sign
+        h = _sign("GET", "iam.amazonaws.com", "us-east-1", "iam", b"",
+                  {"content-type": "application/x-www-form-urlencoded; charset=utf-8"},
+                  ("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", None),
+                  query="Action=ListUsers&Version=2010-05-08",
+                  now=datetime.datetime(2015, 8, 30, 12, 36, 0, tzinfo=datetime.timezone.utc))
+        self.assertTrue(h["Authorization"].endswith(
+            "Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7"), h["Authorization"])

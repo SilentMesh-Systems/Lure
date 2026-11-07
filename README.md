@@ -32,7 +32,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 | **AI agents** (MCP) | An agent checks Lure daily, rotates baits, records placements, and turns an alert and its path into an incident note |
 | **Teaching and workshops** | Deception you can show live on a laptop or a Pi in ten minutes |
 
-Not covered yet: cloud bait keys (AWS, Azure), QR-code baits, a hosted demo listener, and macOS.
+Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait keys are a preview.
 
 ## Quick start
 
@@ -125,6 +125,17 @@ python3 -m lure listen --manifest baits/manifest.json      # also answers DNS on
 ```
 
 The spreadsheet and the email then mention an old backup share such as `\\vault16.backup.example.com\backup`. Anyone who tries to reach it makes a DNS lookup that ends at your listener, from any tool, and you get a high alert. Names outside your zone are refused.
+
+## AWS bait keys (preview)
+
+```
+python3 -m lure aws create --manifest baits/manifest.json --aws-profile my-admin
+python3 -m lure aws watch  --manifest baits/manifest.json --aws-profile my-admin
+```
+
+`create` makes an IAM user with **no permissions** and an access key, and writes `aws credentials (backup job).txt` holding it. The key can do nothing. Anyone who tries it makes a refused AWS call that CloudTrail records, and `watch` polls CloudTrail's free event history (usually 5 to 15 minutes behind) and alerts. IAM users, keys and CloudTrail event history cost nothing.
+
+Status: request signing is verified against AWS's published Signature Version 4 example; the full create-and-watch loop has not yet been run against a live account. Treat it as a preview.
 
 ## Alerts where you already look
 

@@ -124,6 +124,8 @@ class Alerter:
                     if bait and service.startswith("log:") else
                     "a bait hostname was looked up: someone found it and tried to reach it"
                     if bait and service == "dns" else
+                    "an AWS bait key was used: someone found it and called AWS with it"
+                    if bait and service == "aws" else
                     "a retired bait was used: it was taken before the last rotation and is still being tried"
                     if bait and bait.get("retired") else
                     "a bait credential was used: someone found and tried it" if bait else

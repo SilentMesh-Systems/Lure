@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0-beta (8 Nov 2026)
+- Preview: `lure aws create|watch` for AWS bait keys (no-permission IAM user; CloudTrail event history watch). SigV4 signing verified against the AWS documented example; live loop not yet run.
 - QR-code bait (standard-library QR encoder, verified with OpenCV) and a browser bookmarks bait; the listener spots tokens in the URL path.
 - Custom profiles from JSON (`--profile file.json`), with legal, education and retail examples in profiles/.
 - Monthly rotation recipe (cron or MCP).

@@ -32,21 +32,29 @@ PEOPLE = ["Ravi", "Suresh", "Anita", "Prakash", "Deepa", "Karthik", "Meena", "Vi
 # What the baits talk about, per kind of site. Systems point at the listener's
 # HTTP port; the paths make each row look like a different application.
 PROFILES = {
+    "it": {
+        "systems": [("NAS admin", "/nas", "nas.admin"), ("vCenter (read-only)", "/vcenter", "svc_vcenter"),
+                    ("Intranet admin", "/intranet", "intranet.adm")],
+        "jump": "JUMP-SRV-01", "vendors": ["Infosys", "TCS", "Wipro", "Accenture"],
+        "words": ["Welcome", "Summer", "Monsoon", "Company", "Admin", "Diwali"],
+        "sheet": ["passwords_FINAL_v2.xlsx", "IT logins - keep safe.xlsx", "admin_accounts_2025.xlsx"],
+        "event": "the audit", "dept": "IT Support",
+    },
     "plant": {
         "systems": [("SCADA web (read-only)", "/scada", "scada_ro"), ("Historian", "/historian", "svc_historian"),
                     ("MES reports", "/mes", "mes.report")],
         "jump": "JUMP-OT-01", "vendors": ["Siemens", "ABB", "Honeywell", "Schneider"],
         "words": ["Turbine", "Boiler", "Kiln", "Plant", "Grid", "Shutdown"],
         "sheet": ["passwords_FINAL_v2.xlsx", "plant logins (do not share).xlsx", "OT_access_list_2025.xlsx"],
-        "event": "shutdown", "dept": "Plant IT",
+        "event": "the shutdown", "dept": "Plant IT",
     },
     "office": {
         "systems": [("Payroll portal", "/payroll", "payroll.admin"), ("Tally server", "/tally", "tally_svc"),
-                    ("Intranet admin", "/intranet", "intranet.adm")],
-        "jump": "JUMP-SRV-01", "vendors": ["Infosys", "TCS", "Wipro", "HCL"],
+                    ("HR system", "/hr", "hr.admin")],
+        "jump": "FINANCE-PC-02", "vendors": ["Tally partner", "Zoho", "Freshworks", "HCL"],
         "words": ["Welcome", "Office", "Summer", "Diwali", "Monsoon", "Finance"],
-        "sheet": ["passwords_FINAL_v2.xlsx", "IT logins - keep safe.xlsx", "admin_accounts_2025.xlsx"],
-        "event": "audit", "dept": "IT Support",
+        "sheet": ["passwords_FINAL_v2.xlsx", "office logins.xlsx", "accounts_2025.xlsx"],
+        "event": "year-end closing", "dept": "Admin Office",
     },
     "bank": {
         "systems": [("Core banking (read-only)", "/cbs", "cbs_viewer"), ("Payment switch console", "/switch", "switch.ops"),
@@ -54,7 +62,7 @@ PROFILES = {
         "jump": "JUMP-DC-01", "vendors": ["Finacle", "FIS", "Temenos", "NCR"],
         "words": ["Ledger", "Branch", "Treasury", "Vault", "Quarter", "Rupee"],
         "sheet": ["passwords_FINAL_v2.xlsx", "branch IT access.xlsx", "DC_access_list_2025.xlsx"],
-        "event": "RBI audit", "dept": "DC Operations",
+        "event": "the RBI audit", "dept": "DC Operations",
     },
     "hospital": {
         "systems": [("HIS admin", "/his", "his.admin"), ("PACS viewer", "/pacs", "pacs_ro"),
@@ -62,7 +70,7 @@ PROFILES = {
         "jump": "JUMP-MED-01", "vendors": ["Philips", "GE Healthcare", "Siemens Healthineers", "Agfa"],
         "words": ["Ward", "Clinic", "Health", "Doctor", "Night", "Shift"],
         "sheet": ["passwords_FINAL_v2.xlsx", "biomedical logins.xlsx", "HIS_access_2025.xlsx"],
-        "event": "NABH audit", "dept": "Biomedical IT",
+        "event": "the NABH audit", "dept": "Biomedical IT",
     },
 }
 
@@ -184,12 +192,12 @@ def _xlsx(path, sheets, author, created, modified):
             z.writestr(name, data)
 
 
-def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194, profile="plant",
+def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
              http_port=8080, rdp_port=3389, retired=None):
     """Write a convincing bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`. Pick one
-    nothing legitimate ever logs into. profile: plant, office, bank or hospital.
+    nothing legitimate ever logs into. profile: it (default), office, plant, bank or hospital.
     retired: baits from an earlier set (see rotate); they stay in the manifest
     so a credential stolen months ago still raises an alert.
     """
@@ -210,7 +218,7 @@ def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194, profil
                            "leads_to": list(leads_to), "location": None}, **extra))
 
     sheet_name = _rng.choice(p["sheet"])
-    rdp_name = _rng.choice([f"DO NOT DELETE - {jump}.rdp", f"{jump} (plant side).rdp", f"{jump.lower()}.rdp"])
+    rdp_name = _rng.choice([f"DO NOT DELETE - {jump}.rdp", f"{jump} (admin).rdp", f"{jump.lower()}.rdp"])
     vpn_names = [f"{vendor} support VPN{' (old)' if i == 0 else ' ' + str(i + 1)}.ovpn"
                  for i in range(max(1, vpn_count))]
     csv_name = "passwords.csv"
@@ -224,7 +232,7 @@ def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194, profil
                 "prompt for credentials:i:1\nscreen mode id:i:2\nauthentication level:i:2\n"
                 "redirectclipboard:i:1\nsession bpp:i:32\n")
     files.append(rdp_name)
-    add(rdp_name, "rdp", rdp_user, "engineering workstation desktop")
+    add(rdp_name, "rdp", rdp_user, "an admin or engineering workstation desktop")
 
     # 2. Vendor VPN profiles, one listener port each (the VPN login is encrypted).
     vpns = []
@@ -236,7 +244,7 @@ def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194, profil
                     f"remote {listener} {port}\n"
                     "auth-user-pass\nnobind\npersist-key\npersist-tun\nremote-cert-tls server\nverb 3\n"
                     f"# {vendor} remote support login: {u} / {pw}\n"
-                    f"# for the plant side, ask {person} for the {jump} RDP file\n")
+                    f"# for the internal servers, ask {person} for the {jump} RDP file\n")
         files.append(name)
         add(name, "openvpn", u, "jump host or vendor laptop share", [rdp_name], port=port)
         vpns.append((u, pw, port))
@@ -257,7 +265,7 @@ def generate(listener, out_dir, site="plant", vpn_count=1, vpn_port=1194, profil
     mod = when.strftime("%d-%b")
     rows = [["System", "Address", "Username", "Password", "Notes", "Updated"],
             [f"{jump} (RDP)", f"{listener}:{rdp_port}", rdp_user, rdp_pw,
-             f"plant side via {jump}, saved RDP on ENG desktop", mod]]
+             f"via {jump}, saved RDP on the admin desktop", mod]]
     rows += [r + [_rng.choice(["", "read-only", "ask " + helper + " before changing", "same as last year"]), mod]
              for r in sys_rows]
     rows.append(["Shared admin (temporary)", f"{web}/admin", shared_user, shared_pw,
@@ -325,8 +333,8 @@ def rotate(manifest_path, out_dir=None, **kwargs):
         old = json.load(f)
     retired = [dict(b, retired=True) for b in old.get("baits", [])]
     out_dir = out_dir or os.path.dirname(os.path.abspath(manifest_path))
-    return generate(old["listener"], out_dir, site=old.get("site", "plant"),
-                    profile=kwargs.pop("profile", old.get("profile", "plant")), retired=retired, **kwargs)
+    return generate(old["listener"], out_dir, site=old.get("site", "site"),
+                    profile=kwargs.pop("profile", old.get("profile", "it")), retired=retired, **kwargs)
 
 
 def record(manifest_path, bait, location):

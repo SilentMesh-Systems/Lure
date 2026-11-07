@@ -34,7 +34,7 @@ class GenerateTest(unittest.TestCase):
             with zipfile.ZipFile(os.path.join(d, sheet)) as z:
                 self.assertIsNone(z.testzip())
                 xml = z.read("xl/worksheets/sheet1.xml").decode() + z.read("xl/worksheets/sheet2.xml").decode()
-                self.assertIn("Plant IT", z.read("docProps/core.xml").decode())
+                self.assertIn("IT Support", z.read("docProps/core.xml").decode())
             for b in m["baits"]:
                 if b["file"] == sheet:
                     self.assertIn(b["username"], xml)

@@ -15,9 +15,9 @@ def main():
     g = sub.add_parser("generate", help="write a set of bait files")
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
     g.add_argument("--out", default="baits")
-    g.add_argument("--site", default="plant")
-    g.add_argument("--profile", default="plant", choices=sorted(PROFILES),
-                   help="vocabulary that fits the place: plant, office, bank or hospital")
+    g.add_argument("--site", default="site")
+    g.add_argument("--profile", default="it", choices=sorted(PROFILES),
+                   help="vocabulary that fits the place: it (default), office, plant, bank or hospital")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
 

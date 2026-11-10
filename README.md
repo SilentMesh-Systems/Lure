@@ -30,6 +30,20 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 - **Your alerts go only to you.** The listener sends alerts to your own webhook, syslog or terminal. No SilentMesh service is involved, and nothing is sent to us.
 - **Tested on Linux (x86-64 and ARM, including Raspberry Pi) and Windows,** Python 3.9 and newer, standard library only. macOS is not yet supported. Apache-2.0.
 
+## Get started in three commands
+
+Lure is not on PyPI yet, so run it from the cloned folder (`cd Lure` first), or install it once with `pip install .` and use `lure` instead of `python3 -m lure`.
+
+```
+python3 -m lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)
+python3 -m lure init          # 2. write real baits that point at this machine; it prints the next step
+python3 -m lure listen --ui   # 3. wait for someone to use one; dashboard at http://127.0.0.1:8765
+```
+
+Then, from another terminal or machine: `python3 -m lure test`. It plays an attacker with one bait and shows you the alert. That is a working install. Copy a bait file or two somewhere an intruder would look (a desktop, a file share) and tell Lure where with `lure record`.
+
+Running `python3 -m lure` with no arguments prints this guide.
+
 ## Use cases
 
 | Who | How Lure helps |
@@ -49,11 +63,9 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait keys are a preview.
 
-## Quick start
+## The full setup
 
-No install step: clone the repo and run it with `python3 -m lure` from the repo folder (or `pip install .`).
-
-1. Pick a listener host: any spare Linux machine or VM on the IT side that nobody legitimately logs into.
+1. Pick a listener host: any spare Linux machine, VM or Raspberry Pi on the IT side that nobody legitimately logs into. `lure init` uses the machine you are on; `lure generate --listener IP` lets you choose.
 
 2. Generate the bait set, pointing it at that host:
 

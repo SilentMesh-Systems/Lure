@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import sys
 
 from . import __version__
 from .generate import PROFILES, generate, record, rotate
@@ -11,6 +12,11 @@ def main():
     p = argparse.ArgumentParser(prog="lure", description="Credential lures for everyone: planted credentials that give the attacker away.")
     p.add_argument("--version", action="version", version=f"lure v{__version__} by SilentMesh")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    ini = sub.add_parser("init", help="first install on this machine: write baits pointing here and say what to do next")
+    ini.add_argument("--out", default="baits")
+    ini.add_argument("--listener", help="use this address instead of this machine's own")
+    ini.add_argument("--profile", default="it", help="it (default), office, home, plant, bank, hospital, or a JSON profile file")
 
     g = sub.add_parser("generate", help="write a set of bait files")
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
@@ -76,7 +82,16 @@ def main():
     l.add_argument("--http", type=int, default=8080)
     l.add_argument("--openvpn", type=int, default=1194, help="only used for a manifest without VPN ports; otherwise the ports written into the VPN baits are used")
 
+    if len(sys.argv) == 1:
+        from .init import GUIDE
+        print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + GUIDE)
+        return
     a = p.parse_args()
+    if a.cmd == "init":
+        from .init import init
+        if init(a.out, a.listener, a.profile) is None:
+            raise SystemExit(1)
+        return
     if a.cmd == "generate":
         m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile, dns_zone=a.dns_zone)
         files = sorted({b["file"] for b in m["baits"]})

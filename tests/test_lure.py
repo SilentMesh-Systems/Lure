@@ -564,3 +564,18 @@ class SelfTestTest(unittest.TestCase):
             ok = selftest(os.path.join(d, "manifest.json"), rdp=1, http=1, out=lambda s: out.write(s + "\n"))
             self.assertFalse(ok)
             self.assertIn("FAIL", out.getvalue())
+
+
+class InitTest(unittest.TestCase):
+    def test_init_writes_baits_and_refuses_overwrite(self):
+        import io
+        from lure.init import init, my_ip
+        self.assertRegex(my_ip(), r"^\d+\.\d+\.\d+\.\d+$")
+        with tempfile.TemporaryDirectory() as d:
+            out = io.StringIO()
+            m = init(os.path.join(d, "baits"), listener="10.0.0.9", out=lambda s: out.write(s + "\n"))
+            self.assertEqual(m["listener"], "10.0.0.9")
+            self.assertTrue(os.path.exists(os.path.join(d, "baits", "manifest.json")))
+            self.assertIn("lure listen", out.getvalue())
+            self.assertIn("lure test", out.getvalue())
+            self.assertIsNone(init(os.path.join(d, "baits"), listener="10.0.0.9", out=lambda s: None))

@@ -1,0 +1,41 @@
+{
+  "systems": [
+    [
+      "SCADA web (read-only)",
+      "/scada",
+      "scada_ro"
+    ],
+    [
+      "Historian",
+      "/historian",
+      "svc_historian"
+    ],
+    [
+      "MES reports",
+      "/mes",
+      "mes.report"
+    ]
+  ],
+  "jump": "JUMP-OT-01",
+  "vendors": [
+    "Siemens",
+    "ABB",
+    "Honeywell",
+    "Schneider"
+  ],
+  "words": [
+    "Turbine",
+    "Boiler",
+    "Kiln",
+    "Plant",
+    "Grid",
+    "Shutdown"
+  ],
+  "sheet": [
+    "passwords_FINAL_v2.xlsx",
+    "plant logins (do not share).xlsx",
+    "OT_access_list_2025.xlsx"
+  ],
+  "event": "the shutdown",
+  "dept": "Plant IT"
+}

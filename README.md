@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.SilentMesh-Systems/Lure -->
 <img src="assets/lure-mark-128.png" width="96" alt="SilentMesh Lure mark">
 
 # SilentMesh Lure (beta)

@@ -579,3 +579,11 @@ class InitTest(unittest.TestCase):
             self.assertIn("lure listen", out.getvalue())
             self.assertIn("lure test", out.getvalue())
             self.assertIsNone(init(os.path.join(d, "baits"), listener="10.0.0.9", out=lambda s: None))
+
+
+class AwsTagTest(unittest.TestCase):
+    def test_bait_user_tag_passes_iam_pattern(self):
+        import re
+        src = open(os.path.join(os.path.dirname(__file__), "..", "lure", "aws.py")).read()
+        value = re.search(r'"Tags\.member\.1\.Value": "([^"]+)"', src).group(1)
+        self.assertRegex(value, r"^[\w\s.:/=+\-@]{0,256}$")

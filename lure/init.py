@@ -7,21 +7,31 @@ the two commands that finish the job. Everything can be changed later with
 
 import os
 import socket
+import sys
 
 from .generate import generate
 
-GUIDE = """
+def cmd():
+    """How this user runs Lure: `lure` when installed, `python3 -m lure` from a clone."""
+    return "lure" if os.path.basename(sys.argv[0]) in ("lure", "lure.exe", "silentmesh-lure") else "python3 -m lure"
+
+
+GUIDE_TEMPLATE = """
 Three commands, one machine:
 
-  python3 -m lure demo            see Lure catch a simulated attacker (nothing leaves this machine)
-  python3 -m lure init            write real baits pointing at this machine; it tells you the next step
-  python3 -m lure listen --ui     wait for someone to use one; the dashboard opens on http://127.0.0.1:8765
+  {c} demo            see Lure catch a simulated attacker (nothing leaves this machine)
+  {c} init            write real baits pointing at this machine; it tells you the next step
+  {c} listen --ui     wait for someone to use one; the dashboard opens on http://127.0.0.1:8765
 
-Then prove it from another terminal or machine:  python3 -m lure test
+Then prove it from another terminal or machine:  {c} test
 
 Everything else (profiles, log watching, DNS and AWS baits, MCP for AI agents):
-  python3 -m lure --help   or   https://github.com/SilentMesh-Systems/Lure#readme
+  {c} --help   or   https://github.com/SilentMesh-Systems/Lure#readme
 """
+
+
+def guide():
+    return GUIDE_TEMPLATE.replace("{c}", cmd())
 
 
 def my_ip():
@@ -38,6 +48,7 @@ def init(out_dir="baits", listener=None, profile="it", out=print):
     if os.path.exists(manifest):
         out(f"{manifest} already exists. Use `lure rotate` for fresh baits, or `lure init --out other-folder`.")
         return None
+    c = cmd()
     host = listener or my_ip()
     m = generate(host, out_dir, profile=profile)
     files = sorted({b["file"] for b in m["baits"]})
@@ -46,11 +57,13 @@ def init(out_dir="baits", listener=None, profile="it", out=print):
         out(f"  {f}")
     out("")
     out("Next:")
-    out(f"  1. Start the listener here, in this terminal:   python3 -m lure listen --manifest {manifest} --ui")
-    out(f"  2. Prove it, from another terminal:             python3 -m lure test --manifest {manifest}")
+    if host.startswith("127."):
+        out("note: no network address found, so these baits point at this machine only. Re-run with --listener <this machine's LAN IP> to catch use from other machines.")
+    out(f"  1. Start the listener here, in this terminal:   {c} listen --manifest {manifest} --ui")
+    out(f"  2. Prove it, from another terminal:             {c} test --manifest {manifest}")
     out(f"  3. Copy a bait or two to a machine an intruder would reach (a desktop, a share), then tell Lure where:")
     example = next((f for f in files if f.endswith(".rdp")), files[0])
-    out(f"     python3 -m lure record \"{example}\" \"HOSTNAME:C:\\\\Users\\\\someone\\\\Desktop\"")
+    out(f"     {c} record \"{example}\" \"HOSTNAME:C:\\Users\\someone\\Desktop\"")
     out("")
     out(f"Keep {manifest} on this machine only; it maps usernames to baits (it holds no passwords).")
     out("Alerts to Slack, Teams or syslog: add --webhook URL or --syslog HOST to `lure listen`.")

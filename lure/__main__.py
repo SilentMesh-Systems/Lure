@@ -83,8 +83,8 @@ def main():
     l.add_argument("--openvpn", type=int, default=1194, help="only used for a manifest without VPN ports; otherwise the ports written into the VPN baits are used")
 
     if len(sys.argv) == 1:
-        from .init import GUIDE
-        print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + GUIDE)
+        from .init import guide
+        print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + guide())
         return
     a = p.parse_args()
     if a.cmd == "init":

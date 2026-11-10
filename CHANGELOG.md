@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.2 (10 Nov 2026)
+- MCP server speaks spec 2026-07-28 (`server/discover`, stateless requests) and still answers 2025 `initialize`.
+- `lure test`: fires real bait logins at the listener and confirms the alert.
+- `lure init`: one-command first setup, plus a no-argument guide and a three-command README start.
+- Registry metadata (`server.json`), `silentmesh-lure` command, plant profile example.
 - `lure demo`: plants baits on localhost, starts the dashboard and plays an attacker, so you see it work in under a minute.
 - README hero: badges, animated demo, one-line try-it.
 - Release workflow publishes to PyPI (silentmesh-lure) via trusted publishing.

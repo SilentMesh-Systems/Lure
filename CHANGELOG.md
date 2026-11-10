@@ -14,6 +14,7 @@
 - DNS baits: `--dns-zone` adds a bait hostname; the listener answers the delegated zone and alerts on lookups.
 - Webhook alerts formatted for Slack, Teams, Discord and Telegram.
 - `lure rotate` moves old bait files into retired/.
+- `lure test`: fires a real RDP and HTTP bait login at the listener and confirms the alert landed, so a new install proves itself in seconds.
 - MCP: now speaks spec 2026-07-28 (`server/discover`, per-request `_meta` version, -32022 on unsupported versions) and keeps the legacy `initialize` handshake for 2025-11-25 and 2025-06-18 clients.
 - MCP server: `lure mcp` exposes status, alerts, baits, generate, record, rotate and acknowledge to AI agents over stdio; standard library only; passwords never returned.
 - `home` profile: router, NAS and CCTV baits for personal and small-office networks.

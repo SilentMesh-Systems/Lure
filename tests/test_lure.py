@@ -517,3 +517,50 @@ class DemoTest(unittest.TestCase):
         highs = [a for a in st["alerts"] if a["severity"] == "high"]
         self.assertEqual(len(highs), 4)
         self.assertEqual(len(next(iter(st["paths"].values()))), 4)
+
+
+class SelfTestTest(unittest.TestCase):
+    def test_fires_bait_and_sees_alert(self):
+        import asyncio, io, socket, threading, time
+        from lure.generate import generate
+        from lure.listen import Alerter, run
+        from lure.selftest import run as selftest
+
+        def free():
+            with socket.socket() as s:
+                s.bind(("127.0.0.1", 0))
+                return s.getsockname()[1]
+        rdp, http, vpn = free(), free(), free()
+        with tempfile.TemporaryDirectory() as d:
+            generate("127.0.0.1", d, http_port=http, rdp_port=rdp, vpn_port=vpn)
+            log = os.path.join(d, "alerts.jsonl")
+            with open(os.path.join(d, "manifest.json")) as f:
+                alerter = Alerter(json.load(f), out=lambda l: None, log=log, merge_window=8)
+            loop = asyncio.new_event_loop()
+
+            def serve():
+                try:
+                    loop.run_until_complete(run(alerter, rdp, http, openvpn_ports=[vpn]))
+                except RuntimeError:
+                    pass
+            t = threading.Thread(target=serve, daemon=True)
+            t.start()
+            time.sleep(1)
+            out = io.StringIO()
+            ok = selftest(os.path.join(d, "manifest.json"), rdp=rdp, http=http, out=lambda s: out.write(s + "\n"))
+            loop.call_soon_threadsafe(loop.stop)
+            self.assertTrue(ok, out.getvalue())
+            self.assertIn("alert written: high", out.getvalue())
+            with open(log) as f:
+                self.assertGreaterEqual(sum(1 for _ in f), 1)
+
+    def test_reports_unreachable_listener(self):
+        import io
+        from lure.generate import generate
+        from lure.selftest import run as selftest
+        with tempfile.TemporaryDirectory() as d:
+            generate("127.0.0.1", d)
+            out = io.StringIO()
+            ok = selftest(os.path.join(d, "manifest.json"), rdp=1, http=1, out=lambda s: out.write(s + "\n"))
+            self.assertFalse(ok)
+            self.assertIn("FAIL", out.getvalue())

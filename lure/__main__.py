@@ -56,6 +56,12 @@ def main():
     mc.add_argument("--manifest", default="baits/manifest.json")
     mc.add_argument("--log", help="alert log written by `lure listen` (default: alerts.jsonl next to the manifest)")
 
+    t = sub.add_parser("test", help="fire a real bait login at the listener and confirm the alert arrives")
+    t.add_argument("--manifest", default="baits/manifest.json")
+    t.add_argument("--listener", help="override the listener host from the manifest")
+    t.add_argument("--rdp", type=int, default=3389)
+    t.add_argument("--http", type=int, default=8080)
+
     l = sub.add_parser("listen", help="alert when a bait credential is used")
     l.add_argument("--manifest", default="baits/manifest.json")
     l.add_argument("--webhook", help="POST each alert as JSON to this URL")
@@ -77,6 +83,7 @@ def main():
         print(f"wrote {len(m['baits'])} bait credentials in {len(files)} files to {a.out}/ (see manifest.json for where to plant each)")
         for name in files:
             print(f"  {name}")
+        print(f"prove it works: lure test --manifest {a.out}/manifest.json")
     elif a.cmd == "rotate":
         kw = {"profile": a.profile} if a.profile else {}
         m = rotate(a.manifest, **kw)
@@ -111,6 +118,10 @@ def main():
     elif a.cmd == "mcp":
         from .mcp import serve_stdio
         serve_stdio(a.manifest, a.log)
+    elif a.cmd == "test":
+        from .selftest import run as selftest
+        if not selftest(a.manifest, a.listener, a.rdp, a.http):
+            raise SystemExit(1)
     elif a.cmd == "record":
         n = record(a.manifest, a.bait, a.location)
         if not n:

@@ -108,7 +108,13 @@ No install step: clone the repo and run it with `python3 -m lure` from the repo 
 
    It listens on RDP (3389), HTTP (8080) and OpenVPN (1194). Binding ports below 1024 is not needed.
 
-4. Test it. From another machine, open the `.rdp` bait and try to connect. You should get one alert like this:
+4. Prove it works, from any machine that has the manifest:
+
+   ```
+   python3 -m lure test --manifest baits/manifest.json
+   ```
+
+   It plays an attacker: one RDP and one HTTP bait login against the listener, then tells you what landed. On the listener host it confirms the alert in `alerts.jsonl`; elsewhere, watch your Slack, Teams or syslog. If a port is closed it says so. Or do it by hand: open the `.rdp` bait and try to connect. Either way you get one alert like this:
 
    ```json
    {"severity": "high", "service": "rdp", "source": "10.0.7.31:51544",

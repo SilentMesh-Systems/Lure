@@ -48,6 +48,10 @@ def main():
     aw.add_argument("--webhook")
     aw.add_argument("--once", action="store_true", help="check once and exit")
 
+    de = sub.add_parser("demo", help="see Lure catch a simulated attacker on this machine in under a minute")
+    de.add_argument("--no-browser", action="store_true", help="do not open the dashboard in a browser")
+    de.add_argument("--keep", action="store_true", help="keep the dashboard running after the demo")
+
     mc = sub.add_parser("mcp", help="run an MCP server over stdio so AI agents can use Lure")
     mc.add_argument("--manifest", default="baits/manifest.json")
     mc.add_argument("--log", help="alert log written by `lure listen` (default: alerts.jsonl next to the manifest)")
@@ -101,6 +105,9 @@ def main():
             alerter = Alerter(manifest, webhook=a.webhook, log=log)
             print(f"watching CloudTrail ({a.region}) every {a.interval}s for AWS bait keys", flush=True)
             aws.watch(alerter, a.aws_profile, a.region, a.interval, once=a.once)
+    elif a.cmd == "demo":
+        from .demo import demo
+        demo(open_browser=not a.no_browser, keep=a.keep)
     elif a.cmd == "mcp":
         from .mcp import serve_stdio
         serve_stdio(a.manifest, a.log)

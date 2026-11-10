@@ -11,6 +11,15 @@ license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [{name = "SilentMesh Systems Private Limited"}]
 
+keywords = ["deception", "honeytoken", "canary", "security", "blue-team", "mcp", "incident-response"]
+classifiers = ["Programming Language :: Python :: 3", "License :: OSI Approved :: Apache Software License",
+               "Topic :: Security", "Environment :: Console", "Intended Audience :: System Administrators"]
+
+[project.urls]
+Homepage = "https://www.silentmesh.me/lure/"
+Source = "https://github.com/SilentMesh-Systems/Lure"
+Issues = "https://github.com/SilentMesh-Systems/Lure/issues"
+
 [project.scripts]
 lure = "lure.__main__:main"
 

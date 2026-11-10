@@ -478,3 +478,15 @@ class AwsSigningTest(unittest.TestCase):
                   now=datetime.datetime(2015, 8, 30, 12, 36, 0, tzinfo=datetime.timezone.utc))
         self.assertTrue(h["Authorization"].endswith(
             "Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7"), h["Authorization"])
+
+
+class DemoTest(unittest.TestCase):
+    def test_demo_catches_the_simulated_attacker(self):
+        import io, contextlib
+        from lure.demo import demo
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            st = demo(open_browser=False)
+        highs = [a for a in st["alerts"] if a["severity"] == "high"]
+        self.assertEqual(len(highs), 4)
+        self.assertEqual(len(next(iter(st["paths"].values()))), 4)

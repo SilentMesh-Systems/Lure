@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- `lure demo`: plants baits on localhost, starts the dashboard and plays an attacker, so you see it work in under a minute.
+- README hero: badges, animated demo, one-line try-it.
+- Release workflow publishes to PyPI (silentmesh-lure) via trusted publishing.
+
 ## 0.1.0-beta (8 Nov 2026)
 - Preview: `lure aws create|watch` for AWS bait keys (no-permission IAM user; CloudTrail event history watch). SigV4 signing verified against the AWS documented example; live loop not yet run.
 - QR-code bait (standard-library QR encoder, verified with OpenCV) and a browser bookmarks bait; the listener spots tokens in the URL path.

@@ -2,6 +2,20 @@
 
 # SilentMesh Lure (beta)
 
+[![tests](https://github.com/SilentMesh-Systems/Lure/actions/workflows/test.yml/badge.svg)](https://github.com/SilentMesh-Systems/Lure/actions/workflows/test.yml)
+[![licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-5FE07F)](LICENSE)
+![python 3.9+](https://img.shields.io/badge/python-3.9%2B-5FE07F)
+![dependencies: none](https://img.shields.io/badge/dependencies-none-5FE07F)
+![MCP server](https://img.shields.io/badge/MCP-server-5FE07F)
+
+**See it catch someone in under a minute, on your own machine:**
+
+```
+git clone https://github.com/SilentMesh-Systems/Lure && cd Lure && python3 -m lure demo
+```
+
+![Lure demo](assets/demo.gif)
+
 *Lure by SilentMesh*
 
 **Planted credentials that give the attacker away.** A quiet safety net for any network, from a home router to a data centre. Deceive, never disrupt.

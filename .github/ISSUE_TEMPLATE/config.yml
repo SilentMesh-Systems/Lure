@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or setup help
+    url: https://github.com/SilentMesh-Systems/Lure/discussions/categories/q-a
+    about: Ask in Discussions (Q&A)
+  - name: Idea, new bait type or profile
+    url: https://github.com/SilentMesh-Systems/Lure/discussions/categories/ideas
+    about: Share it in Discussions (Ideas)
+  - name: Security vulnerability
+    url: https://github.com/SilentMesh-Systems/Lure/security/advisories/new
+    about: Report privately, never in a public issue

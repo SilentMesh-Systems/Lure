@@ -226,6 +226,15 @@ Lure is free for everyone. For industrial sites, the full SilentMesh product add
 python3 -m unittest discover -s tests
 ```
 
+## Community
+
+- **Questions:** [Discussions, Q&A](https://github.com/SilentMesh-Systems/Lure/discussions/categories/q-a)
+- **Ideas, bait types and profiles:** [Discussions, Ideas](https://github.com/SilentMesh-Systems/Lure/discussions/2)
+- **Show how you use it:** [Show and tell](https://github.com/SilentMesh-Systems/Lure/discussions/categories/show-and-tell)
+- **Bugs:** issues. **Security problems:** report privately (see SECURITY.md).
+
+Contributions are welcome, especially new profiles. See CONTRIBUTING.md and CODE_OF_CONDUCT.md.
+
 ## Licence
 
 Apache License 2.0. See LICENSE.

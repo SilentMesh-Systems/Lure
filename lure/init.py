@@ -11,7 +11,7 @@ import socket
 from .generate import generate
 
 GUIDE = """
-Three commands, one machine, no install:
+Three commands, one machine:
 
   python3 -m lure demo            see Lure catch a simulated attacker (nothing leaves this machine)
   python3 -m lure init            write real baits pointing at this machine; it tells you the next step

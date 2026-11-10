@@ -32,7 +32,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 ## Get started in three commands
 
-Lure is not on PyPI yet, so run it from the cloned folder (`cd Lure` first), or install it once with `pip install .` and use `lure` instead of `python3 -m lure`.
+Install it with `pip install silentmesh-lure` (or `pipx install silentmesh-lure`), then use `lure` in place of `python3 -m lure`. Without installing, run it from the cloned folder.
 
 ```
 python3 -m lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)

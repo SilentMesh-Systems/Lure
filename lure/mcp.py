@@ -2,7 +2,7 @@
 
 Run `lure mcp --manifest baits/manifest.json` from an MCP client (Claude
 Desktop, Claude Code, any MCP-capable agent). It speaks the Model Context
-Protocol over stdio, using only the standard library.
+Protocol (spec 2026-07-28, plus the 2025 handshake versions) over stdio, using only the standard library.
 
 The server works on one bait set: the manifest it was started with, and the
 alerts.jsonl beside it that `lure listen` writes. It never contacts anything
@@ -17,7 +17,12 @@ import sys
 from . import __version__
 from .generate import PROFILES, generate, record, rotate
 
-PROTOCOL = "2025-06-18"
+PROTOCOL = "2026-07-28"
+LEGACY = ["2025-11-25", "2025-06-18"]  # handshake-era versions, still served via `initialize`
+SUPPORTED = [PROTOCOL] + LEGACY
+_META = "io.modelcontextprotocol/"
+INSTRUCTIONS = ("Lure plants fake credentials and reports when an attacker uses one. "
+                "Start with lure_status. A high alert means someone found and tried a bait.")
 
 TOOLS = [
     {"name": "lure_status",
@@ -148,19 +153,34 @@ class Server:
         method, mid = msg.get("method"), msg.get("id")
         if mid is None:
             return None  # notifications need no reply
+        params = msg.get("params")
+        if not isinstance(params, dict):
+            params = {}
+        meta = params.get("_meta")
+        ver = meta.get(_META + "protocolVersion") if isinstance(meta, dict) else None
+        modern = ver == PROTOCOL
+        if ver is not None and not modern and method != "initialize":
+            return self._error(mid, -32022, "unsupported protocol version",
+                               {"supported": SUPPORTED, "requested": ver})
         try:
             if method == "initialize":
-                result = {"protocolVersion": msg.get("params", {}).get("protocolVersion", PROTOCOL),
+                asked = params.get("protocolVersion")
+                result = {"protocolVersion": asked if asked in LEGACY else LEGACY[0],
                           "capabilities": {"tools": {}},
                           "serverInfo": {"name": "lure", "title": "SilentMesh Lure", "version": __version__},
-                          "instructions": "Lure plants fake credentials and reports when an attacker uses one. "
-                                          "Start with lure_status. A high alert means someone found and tried a bait."}
+                          "instructions": INSTRUCTIONS}
+            elif method == "server/discover":
+                result = {"resultType": "complete", "supportedVersions": SUPPORTED,
+                          "capabilities": {"tools": {}}, "instructions": INSTRUCTIONS,
+                          "ttlMs": 3600000, "cacheScope": "public"}
+                modern = True
             elif method == "ping":
                 result = {}
             elif method == "tools/list":
                 result = {"tools": TOOLS}
+                if modern:
+                    result.update(ttlMs=3600000, cacheScope="public")
             elif method == "tools/call":
-                params = msg.get("params", {})
                 name, args = params.get("name"), params.get("arguments") or {}
                 if name not in {t["name"] for t in TOOLS}:
                     return self._error(mid, -32602, f"unknown tool {name!r}")
@@ -172,13 +192,20 @@ class Server:
                     result = {"content": [{"type": "text", "text": str(e)}], "isError": True}
             else:
                 return self._error(mid, -32601, f"method not found: {method}")
+            if modern:
+                result.setdefault("resultType", "complete")
+                result["_meta"] = {_META + "serverInfo": {"name": "lure", "title": "SilentMesh Lure",
+                                                         "version": __version__}}
             return {"jsonrpc": "2.0", "id": mid, "result": result}
         except Exception as e:  # never crash the agent's session
             return self._error(mid, -32603, f"internal error: {e}")
 
     @staticmethod
-    def _error(mid, code, message):
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
+    def _error(mid, code, message, data=None):
+        err = {"code": code, "message": message}
+        if data is not None:
+            err["data"] = data
+        return {"jsonrpc": "2.0", "id": mid, "error": err}
 
 
 def serve_stdio(manifest_path, log_path=None, stdin=None, stdout=None):

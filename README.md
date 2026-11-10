@@ -165,7 +165,7 @@ Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet
 
 ## Use it from an AI agent (MCP)
 
-Lure includes an MCP server, so an AI assistant can plant baits, check them and read alerts for you:
+Lure includes an MCP server, so an AI assistant can plant baits, check them and read alerts for you. It speaks the current MCP specification (2026-07-28, including `server/discover`) and still answers the older `initialize` handshake (2025-11-25 and 2025-06-18), so older clients keep working:
 
 ```
 python3 -m lure mcp --manifest baits/manifest.json

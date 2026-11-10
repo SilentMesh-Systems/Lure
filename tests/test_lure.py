@@ -331,6 +331,33 @@ class McpTest(unittest.TestCase):
             self.assertTrue(all("password" not in b for b in baits))
             self.assertEqual(replies[7]["error"]["code"], -32601)
 
+    def test_2026_stateless_and_discover(self):
+        from lure.mcp import Server, PROTOCOL, SUPPORTED
+        with tempfile.TemporaryDirectory() as d:
+            s = Server(os.path.join(d, "manifest.json"))
+            k = "io.modelcontextprotocol/"
+            meta = {k + "protocolVersion": PROTOCOL, k + "clientCapabilities": {}}
+            r = s.handle({"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": {"_meta": meta}})["result"]
+            self.assertEqual(r["supportedVersions"], SUPPORTED)
+            self.assertEqual(r["_meta"][k + "serverInfo"]["name"], "lure")
+            self.assertIn("tools", r["capabilities"])
+            self.assertEqual(s.handle({"jsonrpc": "2.0", "id": 2, "method": "server/discover"})["result"]["resultType"], "complete")
+            r = s.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {"_meta": meta}})["result"]
+            self.assertEqual(len(r["tools"]), 7)
+            self.assertIn("ttlMs", r)
+            bad = {k + "protocolVersion": "2099-01-01"}
+            e = s.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {"_meta": bad}})["error"]
+            self.assertEqual(e["code"], -32022)
+            self.assertEqual(e["data"], {"supported": SUPPORTED, "requested": "2099-01-01"})
+            old = s.handle({"jsonrpc": "2.0", "id": 5, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}})["result"]
+            self.assertEqual(old["protocolVersion"], "2025-11-25")
+            old = s.handle({"jsonrpc": "2.0", "id": 6, "method": "initialize", "params": {"protocolVersion": "2099-01-01"}})["result"]
+            self.assertEqual(old["protocolVersion"], "2025-11-25")
+            self.assertNotIn("_meta", old)
+            for junk in ([], "x", {"_meta": []}, {"_meta": "x"}):
+                r = s.handle({"jsonrpc": "2.0", "id": 7, "method": "ping", "params": junk})
+                self.assertEqual(r["result"], {})
+
     def test_alerts_and_acknowledge(self):
         import io
         from lure.mcp import Server

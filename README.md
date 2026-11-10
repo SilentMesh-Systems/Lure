@@ -32,7 +32,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 ## Get started in three commands
 
-Install it with `pip install silentmesh-lure` (or `pipx install silentmesh-lure`), then use `lure` in place of `python3 -m lure`. Without installing, run it from the cloned folder.
+Install it with `pipx install silentmesh-lure` (on Kali, Debian and Ubuntu plain `pip install` is refused; get pipx with `sudo apt install pipx`), or run it once with no install via `uvx silentmesh-lure`. Then use `lure` in place of `python3 -m lure`.
 
 ```
 python3 -m lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)

@@ -587,3 +587,14 @@ class AwsTagTest(unittest.TestCase):
         src = open(os.path.join(os.path.dirname(__file__), "..", "lure", "aws.py")).read()
         value = re.search(r'"Tags\.member\.1\.Value": "([^"]+)"', src).group(1)
         self.assertRegex(value, r"^[\w\s.:/=+\-@]{0,256}$")
+
+
+class McpToolDescriptionTest(unittest.TestCase):
+    def test_every_tool_declares_behaviour_annotations(self):
+        from lure.mcp import TOOLS
+        for t in TOOLS:
+            a = t["annotations"]
+            self.assertEqual(set(a), {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}, t["name"])
+            self.assertFalse(a["openWorldHint"], t["name"])
+            if a["readOnlyHint"]:
+                self.assertFalse(a["destructiveHint"], t["name"])

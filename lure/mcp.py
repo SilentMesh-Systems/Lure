@@ -24,42 +24,58 @@ _META = "io.modelcontextprotocol/"
 INSTRUCTIONS = ("Lure plants fake credentials and reports when an attacker uses one. "
                 "Start with lure_status. A high alert means someone found and tried a bait.")
 
+# (read-only, destructive, idempotent); none of the tools reach outside this machine.
+_ANNOTATIONS = {
+    "lure_status": (True, False, True),
+    "lure_alerts": (True, False, True),
+    "lure_baits": (True, False, True),
+    "lure_generate": (False, False, False),
+    "lure_record": (False, True, True),
+    "lure_rotate": (False, True, False),
+    "lure_acknowledge": (False, False, True),
+}
+
 TOOLS = [
     {"name": "lure_status",
-     "description": "Summary of the bait set: how many baits, which have been used, open alerts, and the attacker's path per source address.",
+     "description": "Read-only summary of the bait set: live and retired bait counts, which baits have been used, open alerts, the attacker's path per source address, and a one-line verdict. Reads the local manifest and alert log only; changes nothing and needs no network or credentials. Call this first to answer 'are we compromised?'.",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "lure_alerts",
-     "description": "Recent alerts, newest first. Use this to answer 'has anyone used a bait?'.",
+     "description": "Read-only list of alerts from the local alert log, newest first, filtered by severity and open state. high = a bait credential was used; medium = something touched the listener without one. Changes nothing. Use it to answer 'has anyone used a bait?' and to get the alert id for lure_acknowledge.",
      "inputSchema": {"type": "object", "properties": {
          "severity": {"type": "string", "enum": ["high", "medium", "any"], "default": "any"},
          "open_only": {"type": "boolean", "default": False, "description": "only alerts not yet marked investigated"},
          "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20}},
          "additionalProperties": False}},
     {"name": "lure_baits",
-     "description": "Every live bait: file, username, service, where it is meant to be planted, where it was recorded as planted, and whether it has been triggered. Passwords are never returned.",
+     "description": "Read-only list of every live (non-retired) bait: file, username, service, where it should be planted, where it was recorded as planted, and whether it has fired. Passwords are never returned. Changes nothing.",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "lure_generate",
-     "description": "Write a fresh bait set into the manifest's folder. Only use this for a new deployment; to replace an existing set use lure_rotate.",
+     "description": "Create a new bait set: writes bait files and manifest.json into the manifest's folder on this machine. Refuses with an error if a bait set already exists there, so it never overwrites; use lure_rotate to replace a set. Writes local files only: it does not plant anything, contact the network or start the listener.",
      "inputSchema": {"type": "object", "properties": {
          "listener": {"type": "string", "description": "host or IP of the machine that runs `lure listen`"},
          "profile": {"type": "string", "enum": sorted(PROFILES), "default": "it"},
          "vpn_count": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1}},
          "required": ["listener"], "additionalProperties": False}},
     {"name": "lure_record",
-     "description": "Record where a bait was actually planted, so alerts name the exact place.",
+     "description": "Record where a bait was planted, so later alerts name the exact host and path. Updates the location field in manifest.json, overwriting any earlier location; a file name updates every live bait in that file. Returns how many baits were updated. Errors if no live bait matches; never creates baits and does not touch the planted host.",
      "inputSchema": {"type": "object", "properties": {
          "bait": {"type": "string", "description": "bait file name or username"},
          "location": {"type": "string", "description": "host and path, e.g. FIN-WS-07:C:\\Users\\admin\\Desktop"}},
          "required": ["bait", "location"], "additionalProperties": False}},
     {"name": "lure_rotate",
-     "description": "Replace the baits with fresh ones. Old baits stay in the manifest as retired and still alert.",
+     "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files and restart `lure listen` afterwards. Local files only.",
      "inputSchema": {"type": "object", "properties": {
          "profile": {"type": "string", "enum": sorted(PROFILES)}}, "additionalProperties": False}},
     {"name": "lure_acknowledge",
-     "description": "Mark an alert as investigated by its id (from lure_alerts).",
+     "description": "Mark one alert as investigated, by its id from lure_alerts. Sets acknowledged=true in the local alert log; the alert itself is kept, never deleted. Repeating it is harmless. Errors if no alert has that id.",
      "inputSchema": {"type": "object", "properties": {"id": {"type": "integer"}},
                      "required": ["id"], "additionalProperties": False}},
 ]
+
+for _t in TOOLS:
+    _ro, _destr, _idem = _ANNOTATIONS[_t["name"]]
+    _t["annotations"] = {"readOnlyHint": _ro, "destructiveHint": _destr,
+                          "idempotentHint": _idem, "openWorldHint": False}
 
 
 class Server:

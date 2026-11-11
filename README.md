@@ -12,7 +12,7 @@
 **See it catch someone in under a minute, on your own machine:**
 
 ```
-git clone https://github.com/SilentMesh-Systems/Lure && cd Lure && python3 -m lure demo
+pipx install --pip-args=--pre silentmesh-lure && lure demo
 ```
 
 ![Lure demo](assets/demo.gif)
@@ -32,17 +32,17 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 ## Get started in three commands
 
-Install it with `pipx install --pip-args=--pre silentmesh-lure` (on Kali, Debian and Ubuntu plain `pip install` is refused; get pipx with `sudo apt install pipx`), or run it once with no install via `uvx silentmesh-lure`. Then use `lure` in place of `python3 -m lure`.
+Install it with `pipx install --pip-args=--pre silentmesh-lure` (on Kali, Debian and Ubuntu plain `pip install` is refused; get pipx with `sudo apt install pipx`), or run it once with no install via `uvx silentmesh-lure`. From a cloned folder without installing, `python3 -m lure` works the same as `lure`.
 
 ```
-python3 -m lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)
-python3 -m lure init          # 2. write real baits that point at this machine; it prints the next step
-python3 -m lure listen --ui   # 3. wait for someone to use one; dashboard at http://127.0.0.1:8765
+lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)
+lure init          # 2. write real baits that point at this machine; it prints the next step
+lure listen --ui   # 3. wait for someone to use one; dashboard at http://127.0.0.1:8765
 ```
 
-Then, from another terminal or machine: `python3 -m lure test`. It plays an attacker with one bait and shows you the alert. That is a working install. Copy a bait file or two somewhere an intruder would look (a desktop, a file share) and tell Lure where with `lure record`.
+Then, from another terminal or machine: `lure test`. It plays an attacker with one bait and shows you the alert. That is a working install. Copy a bait file or two somewhere an intruder would look (a desktop, a file share) and tell Lure where with `lure record`.
 
-Running `python3 -m lure` with no arguments prints this guide.
+Running `lure` with no arguments prints this guide.
 
 ## Use cases
 
@@ -70,7 +70,7 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 2. Generate the bait set, pointing it at that host:
 
    ```
-   python3 -m lure generate --listener 10.0.5.20 --out baits
+   lure generate --listener 10.0.5.20 --out baits
    ```
 
    This writes eight bait files, written to be believed:
@@ -94,8 +94,8 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
    After planting, record exactly where each bait lives, so the alert can say so:
 
    ```
-   python3 -m lure record jump-host.rdp "ENG-WS-07:C:\Users\eng\Desktop"
-   python3 -m lure record passwords.xlsx "\\files01\engineering"
+   lure record jump-host.rdp "ENG-WS-07:C:\Users\eng\Desktop"
+   lure record passwords.xlsx "\\files01\engineering"
    ```
 
    Planting VPN profiles in several places? Generate one per place with `--vpn-count 3`. Each gets its own listener port, so the alert names the exact file even though the VPN login itself is encrypted.
@@ -106,7 +106,7 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 
    ```
    # crontab -e : 03:00 on the 1st of every month
-   0 3 1 * * cd /opt/lure && python3 -m lure rotate --manifest baits/manifest.json && systemctl restart lure-listen
+   0 3 1 * * cd /opt/lure && lure rotate --manifest baits/manifest.json && systemctl restart lure-listen
    ```
 
    Then replant the new files listed in `baits/`.
@@ -114,7 +114,7 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 3. Run the listener on the listener host:
 
    ```
-   python3 -m lure listen --manifest baits/manifest.json \
+   lure listen --manifest baits/manifest.json \
        --webhook https://your-alerts.example/hook --syslog 10.0.1.5:514
    ```
 
@@ -123,7 +123,7 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 4. Prove it works, from any machine that has the manifest:
 
    ```
-   python3 -m lure test --manifest baits/manifest.json
+   lure test --manifest baits/manifest.json
    ```
 
    It plays an attacker: one RDP and one HTTP bait login against the listener, then tells you what landed. On the listener host it confirms the alert in `alerts.jsonl`; elsewhere, watch your Slack, Teams or syslog. If a port is closed it says so. Or do it by hand: open the `.rdp` bait and try to connect. Either way you get one alert like this:
@@ -141,9 +141,9 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 An attacker may type a bait login into your **real** VPN, Active Directory, SSH or web login instead of the listener. Lure can watch those systems' logs and alert when a bait username appears:
 
 ```
-python3 -m lure watch /var/log/auth.log /var/log/openvpn.log --manifest baits/manifest.json
+lure watch /var/log/auth.log /var/log/openvpn.log --manifest baits/manifest.json
 # or alongside the listener:
-python3 -m lure listen --manifest baits/manifest.json --watch /var/log/auth.log
+lure listen --manifest baits/manifest.json --watch /var/log/auth.log
 ```
 
 It reads any plain-text log: Linux auth logs, VPN and RADIUS logs, web server logs, or Windows Security events forwarded to syslog or exported with `wevtutil qe Security /f:text` (failed logons 4625 and 4771 carry the user name). Only whole account names match, with or without a `DOMAIN\` part.
@@ -153,8 +153,8 @@ It reads any plain-text log: Linux auth logs, VPN and RADIUS logs, web server lo
 Delegate a spare subdomain to the listener host with an NS record (for example `backup.example.com`), then:
 
 ```
-python3 -m lure generate --listener 10.0.5.20 --out baits --dns-zone backup.example.com
-python3 -m lure listen --manifest baits/manifest.json      # also answers DNS on UDP 53
+lure generate --listener 10.0.5.20 --out baits --dns-zone backup.example.com
+lure listen --manifest baits/manifest.json      # also answers DNS on UDP 53
 ```
 
 The spreadsheet and the email then mention an old backup share such as `\\vault16.backup.example.com\backup`. Anyone who tries to reach it makes a DNS lookup that ends at your listener, from any tool, and you get a high alert. Names outside your zone are refused.
@@ -162,8 +162,8 @@ The spreadsheet and the email then mention an old backup share such as `\\vault1
 ## AWS bait keys (preview)
 
 ```
-python3 -m lure aws create --manifest baits/manifest.json --aws-profile my-admin
-python3 -m lure aws watch  --manifest baits/manifest.json --aws-profile my-admin
+lure aws create --manifest baits/manifest.json --aws-profile my-admin
+lure aws watch  --manifest baits/manifest.json --aws-profile my-admin
 ```
 
 `create` makes an IAM user with **no permissions** and an access key, and writes `aws credentials (backup job).txt` holding it. The key can do nothing. Anyone who tries it makes a refused AWS call that CloudTrail records, and `watch` polls CloudTrail's free event history (usually 5 to 15 minutes behind) and alerts. IAM users, keys and CloudTrail event history cost nothing.
@@ -177,7 +177,7 @@ Status: request signing is verified against AWS's published Signature Version 4 
 ## Local dashboard
 
 ```
-python3 -m lure listen --manifest baits/manifest.json --ui
+lure listen --manifest baits/manifest.json --ui
 ```
 
 Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet or triggered, and where it is planted) and a live alert feed with a "Mark investigated" button. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
@@ -187,10 +187,10 @@ Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet
 Lure includes an MCP server, so an AI assistant can plant baits, check them and read alerts for you. It speaks the current MCP specification (2026-07-28, including `server/discover`) and still answers the older `initialize` handshake (2025-11-25 and 2025-06-18), so older clients keep working:
 
 ```
-python3 -m lure mcp --manifest baits/manifest.json
+lure mcp --manifest baits/manifest.json
 ```
 
-Add it to your MCP client. For Claude Code: `claude mcp add lure -- python3 -m lure mcp --manifest /path/to/baits/manifest.json`. For Claude Desktop or any client using a JSON config:
+Add it to your MCP client. For Claude Code: `claude mcp add lure -- lure mcp --manifest /path/to/baits/manifest.json`. For Claude Desktop or any client using a JSON config:
 
 ```json
 {"mcpServers": {"lure": {"command": "python3", "args": ["-m", "lure", "mcp", "--manifest", "/path/to/baits/manifest.json"]}}}

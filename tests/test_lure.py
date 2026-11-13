@@ -118,12 +118,49 @@ class AlerterTest(unittest.TestCase):
         self.assertEqual(self.a.event("openvpn", "10.1.1.1", 5000, None, now=0)["severity"], "medium")
 
     def test_dedupe_and_rate_limit(self):
-        self.assertIsNotNone(self.a.event("http", "10.1.1.1", 1, "u1", now=0))
-        self.assertIsNone(self.a.event("http", "10.1.1.1", 2, "u1", now=10))
-        self.assertIsNotNone(self.a.event("http", "10.1.1.1", 3, "u1", now=700))
+        self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 1, "u1", now=0))
+        self.assertIsNone(self.a.event("rdp", "10.1.1.1", 2, "u1", now=10))
+        self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 3, "u1", now=700))
         self.a.event("rdp", "10.2.2.2", 1, None, now=701)
         self.a.event("rdp", "10.3.3.3", 1, None, now=702)
         self.assertIsNone(self.a.event("rdp", "10.4.4.4", 1, None, now=703))
+
+
+class DemonstratedIntentTest(unittest.TestCase):
+    def setUp(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"},
+                       {"username": "u2", "file": "JUMP-SRV-01.rdp", "plant_on": "desktop"}]}
+        self.a = Alerter(m, out=[].append)
+
+    def test_http_bait_reentered_after_warning_is_flagged_once(self):
+        first = self.a.event("http", "10.1.1.1", 1, "u1", now=0)
+        self.assertNotIn("after_warning", first)
+        again = self.a.event("http", "10.1.1.1", 2, "u1", now=5)
+        self.assertTrue(again["after_warning"])
+        self.assertIn("warning", again["why"])
+        self.assertTrue(again["depth"]["after_warning"])
+        self.assertIsNone(self.a.event("http", "10.1.1.1", 3, "u1", now=9))
+
+    def test_other_source_is_not_after_warning(self):
+        self.a.event("http", "10.1.1.1", 1, "u1", now=0)
+        self.assertNotIn("after_warning", self.a.event("http", "10.9.9.9", 1, "u1", now=5))
+
+    def test_depth_and_evidence_count_distinct_baits_per_source(self):
+        self.a.event("http", "10.1.1.1", 1, "u1", now=0)
+        ev = self.a.event("rdp", "10.1.1.1", 2, "u2", now=5)
+        self.assertEqual(ev["depth"]["baits_used"], 2)
+        self.assertEqual(ev["depth"]["order"], ["passwords.xlsx", "JUMP-SRV-01.rdp"])
+        self.assertIn("cannot_conclude", ev["evidence"])
+        self.assertEqual(self.a.state()["depth"]["10.1.1.1"]["baits_used"], 2)
+
+    def test_medium_touch_has_no_depth(self):
+        self.assertNotIn("depth", self.a.event("rdp", "10.1.1.1", 1, None, now=0))
+
+    def test_http_reply_shows_warning(self):
+        from lure.listen import HTTP_401
+        self.assertIn(b"authorised personnel only", HTTP_401.lower())
+        head, body = HTTP_401.split(b"\r\n\r\n", 1)
+        self.assertIn(b"Content-Length: %d" % len(body), head)
 
 
 class EndToEndTest(unittest.TestCase):

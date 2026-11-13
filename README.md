@@ -136,6 +136,14 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
     "why": "a bait credential was used: someone found and tried it"}
    ```
 
+## Intent, not just a touch
+
+One bait login can be an accident. A sequence is harder to explain away. Every bait alert now carries:
+
+- `depth`: for that source address, how many distinct baits it has used, how many attempts, and in what order.
+- `after_warning`: the HTTP listener answers a bait login with an "authorised personnel only, access is logged" banner and asks again. Entering the bait credential a second time after that warning is flagged in its own alert.
+- `evidence`: what the alert shows, what it lets you conclude, and what it cannot (who the person is, their motive, or baits found but never tried; the address may be a NAT, VPN or pivot host).
+
 ## Catch bait logins on your real systems
 
 An attacker may type a bait login into your **real** VPN, Active Directory, SSH or web login instead of the listener. Lure can watch those systems' logs and alert when a bait username appears:

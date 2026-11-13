@@ -57,6 +57,10 @@ def webhook_payload(url, ev):
     if where:
         lines.append(f"Planted: {where}")
     lines.append(f"From {ev.get('source')} over {ev.get('service')}" + (f" as {ev['username']}" if ev.get("username") else ""))
+    d = ev.get("depth")
+    if d and (d["baits_used"] > 1 or d["after_warning"]):
+        lines.append(f"Same source: {d['baits_used']} bait(s), {d['attempts']} attempt(s)"
+                     + (", re-entered after the warning banner" if d["after_warning"] else ""))
     lines.append(f"{ev.get('time')} · severity {ev.get('severity')}")
     text = "\n".join(lines)
     if "hooks.slack.com" in url:
@@ -97,6 +101,8 @@ class Alerter:
         self.log = log
         self.lock = threading.Lock()
         self.history = []
+        # (source ip, username) of HTTP bait logins answered with the warning banner.
+        self.warned = set()
         if log:
             try:
                 with open(log) as f:
@@ -135,13 +141,24 @@ class Alerter:
         if source_detail:
             ev["detail"] = source_detail
         key = (src_ip, service, username)
-        if now - self.seen.get(key, -1e18) < self.window:
+        after_warning = bool(bait) and service == "http" and (src_ip, username) in self.warned
+        if after_warning:
+            # The same bait login was sent again after the warning banner: let it through once.
+            self.warned.discard((src_ip, username))
+            ev["after_warning"] = True
+            ev["why"] = ("a bait credential was entered again after a written warning that the system "
+                         "is for authorised personnel only")
+        elif now - self.seen.get(key, -1e18) < self.window:
             return None
         self.sent = [t for t in self.sent if now - t < self.window]
         if len(self.sent) >= self.max_per_window:
             return None
         self.seen[key] = now
         self.sent.append(now)
+        if bait is not None:
+            if service == "http" and not after_warning:
+                self.warned.add((src_ip, username))
+            ev.update(self._evidence(src_ip, ev))
         if bait is None and username is None and self.merge_window:
             timer = threading.Timer(self.merge_window, self._flush_pending, (src_ip,))
             timer.daemon = True
@@ -158,6 +175,28 @@ class Alerter:
                 held[1].cancel()
         self._emit(ev)
         return ev
+
+    def _evidence(self, src_ip, ev):
+        """Engagement depth for this source and what the alert does and does not show."""
+        with self.lock:
+            prior = [a for a in self.history if a.get("severity") == "high"
+                     and a["source"].rsplit(":", 1)[0] == src_ip]
+        files = []
+        for a in prior + [ev]:
+            if a.get("bait_file") and a["bait_file"] not in files:
+                files.append(a["bait_file"])
+        warned = any(a.get("after_warning") for a in prior) or ev.get("after_warning", False)
+        return {
+            "depth": {"baits_used": len(files), "attempts": len(prior) + 1,
+                      "order": files, "after_warning": warned},
+            "evidence": {
+                "observed": f"{len(prior) + 1} bait login(s) from {src_ip}, {len(files)} distinct bait(s)"
+                            + (", repeated after a warning" if warned else ""),
+                "can_conclude": "someone at or behind this address found bait credentials and tried them",
+                "cannot_conclude": "who the person is or their motive; the address may be a NAT, VPN or "
+                                   "compromised pivot host; baits found but never tried are not seen",
+            },
+        }
 
     def _flush_pending(self, src_ip):
         with self.lock:
@@ -183,14 +222,21 @@ class Alerter:
         baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])
                  if not b.get("retired") or b["username"] in fired]
         # The attacker's path: per source address, the baits used, oldest first.
-        paths = {}
+        paths, depth = {}, {}
         for a in reversed(alerts):
             if a.get("severity") == "high":
                 ip = a["source"].rsplit(":", 1)[0]
                 step = {"time": a["time"], "file": a["bait_file"], "service": a["service"]}
                 if not paths.get(ip) or paths[ip][-1]["file"] != step["file"]:
                     paths.setdefault(ip, []).append(step)
-        return {"baits": baits, "alerts": alerts, "paths": paths}
+                d = depth.setdefault(ip, {"baits_used": 0, "attempts": 0, "after_warning": False, "_f": set()})
+                d["attempts"] += 1
+                d["_f"].add(a["bait_file"])
+                d["baits_used"] = len(d["_f"])
+                d["after_warning"] = d["after_warning"] or bool(a.get("after_warning"))
+        for d in depth.values():
+            d.pop("_f")
+        return {"baits": baits, "alerts": alerts, "paths": paths, "depth": depth}
 
     def _emit(self, ev):
         line = json.dumps(ev)
@@ -243,8 +289,12 @@ async def _serve(alerter, service, port, parser, reply):
                          "or generate VPN baits with a different --vpn-port.") from None
 
 
-HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA\"\r\n"
-            b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+WARNING_BODY = (b"<html><body><h1>Authorised personnel only</h1>"
+                b"<p>This system is restricted. Access attempts are logged. If you are not authorised, "
+                b"do not continue. Re-enter your credentials to confirm you are authorised.</p></body></html>")
+HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA - authorised personnel "
+            b"only, access is logged. Re-enter credentials to confirm\"\r\nContent-Type: text/html\r\n"
+            b"Content-Length: " + str(len(WARNING_BODY)).encode() + b"\r\nConnection: close\r\n\r\n" + WARNING_BODY)
 
 
 async def run(alerter, rdp=3389, http=8080, openvpn=1194, openvpn_ports=None, dns_zone=None, dns_port=53):

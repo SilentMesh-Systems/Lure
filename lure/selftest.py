@@ -11,6 +11,7 @@ import os
 import socket
 import time
 import urllib.request
+from datetime import datetime, timezone
 
 
 def _rdp(host, port, username):
@@ -38,7 +39,7 @@ def _count(log):
         return None
 
 
-def run(manifest_path, listener=None, rdp=3389, http=8080, out=print):
+def run(manifest_path, listener=None, rdp=3389, http=8080, out=print, _result=None):
     with open(manifest_path) as f:
         m = json.load(f)
     host = listener or m["listener"]
@@ -67,11 +68,16 @@ def run(manifest_path, listener=None, rdp=3389, http=8080, out=print):
         else:
             ok += 1
             out(f"  sent {service.upper()} login as {b['username']}  (from {b['file']})")
+    if _result is not None:
+        _result["sent"] = ok
+        _result["tried"] = len(results)
     if not ok:
         return False
     sent = [b for _, _, b, err in results if not err]
     time.sleep(1.5)
     after = _count(log)
+    if _result is not None:
+        _result["alert_written"] = None if after is None else after > (before or 0)
     if after is not None and after > (before or 0):
         with open(log) as f:
             last = json.loads(f.readlines()[-1])
@@ -85,3 +91,47 @@ def run(manifest_path, listener=None, rdp=3389, http=8080, out=print):
         out(f"  If it runs here, the login reached the port but no alert was raised: check the listener terminal for {sent[0]['username']}.")
     out("  Nothing in production was touched. These are bait accounts; they do not exist anywhere real.")
     return True
+
+
+FRESH_DAYS = 90
+
+
+def readiness(manifest_path, listener=None, rdp=3389, http=8080, now=None):
+    """Evaluation-matrix rows Lure can prove itself. Each row: status, evidence, checked time."""
+    now = now or datetime.now(timezone.utc)
+    stamp = now.isoformat(timespec="seconds")
+    with open(manifest_path) as f:
+        m = json.load(f)
+    res = {}
+    lines = []
+    run(manifest_path, listener, rdp, http, out=lines.append, _result=res)
+    rows = []
+    sent, tried = res.get("sent", 0), res.get("tried", 0)
+    rows.append({"check": "functional", "status": "pass" if tried and sent == tried else "degraded" if sent else "fail",
+                 "evidence": f"{sent} of {tried} bait logins reached the listener", "checked": stamp})
+    written = res.get("alert_written")
+    rows.append({"check": "alert_path",
+                 "status": "pass" if written else "unknown" if written is None else "fail",
+                 "evidence": "new line in alerts.jsonl" if written else
+                             "alerts.jsonl not on this host: confirm at the webhook or syslog" if written is None else
+                             "no new alert line after the test logins", "checked": stamp})
+    try:
+        gen = datetime.fromisoformat(m["generated"])
+        if gen.tzinfo is None:
+            gen = gen.replace(tzinfo=timezone.utc)
+        age = (now - gen).days
+        rows.append({"check": "bait_freshness", "status": "pass" if age <= FRESH_DAYS else "degraded",
+                     "evidence": f"baits {age} days old (rotate within {FRESH_DAYS})", "checked": stamp})
+    except (KeyError, ValueError, TypeError):
+        rows.append({"check": "bait_freshness", "status": "unknown", "evidence": "no generation date in manifest",
+                     "checked": stamp})
+    live = [b for b in m.get("baits", []) if not b.get("retired")]
+    placed = [b for b in live if b.get("location")]
+    rows.append({"check": "placement_recorded", "status": "pass" if live and len(placed) == len(live) else "degraded",
+                 "evidence": f"{len(placed)} of {len(live)} live baits have a recorded location (lure record)",
+                 "checked": stamp})
+    applicable = [r for r in rows if r["status"] != "unknown"]
+    return {"product": "lure", "checked": stamp, "rows": rows,
+            "ready": sum(r["status"] == "pass" for r in applicable), "applicable": len(applicable),
+            "summary": f"{sum(r['status'] == 'pass' for r in applicable)} of {len(applicable)} ready",
+            "not_covered": "realism against a real attacker and fingerprint resistance need an authorised test"}

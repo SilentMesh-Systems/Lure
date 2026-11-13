@@ -41,6 +41,8 @@ def main():
     w.add_argument("logs", nargs="+", metavar="LOGFILE")
     w.add_argument("--manifest", default="baits/manifest.json")
     w.add_argument("--webhook")
+    w.add_argument("--format", choices=["native", "chain"], default="native",
+                   help="webhook and syslog payload: native Lure alert, or the shared intent-chain event SilentMesh joins on")
     w.add_argument("--syslog")
     w.add_argument("--from-start", action="store_true", help="scan existing lines too, not only new ones")
 
@@ -67,10 +69,13 @@ def main():
     t.add_argument("--listener", help="override the listener host from the manifest")
     t.add_argument("--rdp", type=int, default=3389)
     t.add_argument("--http", type=int, default=8080)
+    t.add_argument("--report", action="store_true", help="also print a readiness report (JSON): what was proven, when, and what was not")
 
     l = sub.add_parser("listen", help="alert when a bait credential is used")
     l.add_argument("--manifest", default="baits/manifest.json")
     l.add_argument("--webhook", help="POST each alert as JSON to this URL")
+    l.add_argument("--format", choices=["native", "chain"], default="native",
+                   help="webhook and syslog payload: native Lure alert, or the shared intent-chain event SilentMesh joins on")
     l.add_argument("--syslog", help="host[:port] for UDP syslog")
     l.add_argument("--ui", action="store_true", help="serve a local dashboard (default http://127.0.0.1:8765)")
     l.add_argument("--ui-host", default="127.0.0.1", help="dashboard address; keep 127.0.0.1 unless you know why")
@@ -110,7 +115,7 @@ def main():
         with open(a.manifest) as f:
             manifest = json.load(f)
         log = os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
-        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log)
+        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log, fmt=a.format)
         print(f"watching {len(a.logs)} log file(s) for {len(alerter.by_user)} bait usernames", flush=True)
         Watcher(alerter, a.logs, from_start=a.from_start).run()
     elif a.cmd == "aws":
@@ -135,7 +140,13 @@ def main():
         serve_stdio(a.manifest, a.log)
     elif a.cmd == "test":
         from .selftest import run as selftest
-        if not selftest(a.manifest, a.listener, a.rdp, a.http):
+        if a.report:
+            from .selftest import readiness
+            r = readiness(a.manifest, a.listener, a.rdp, a.http)
+            print(json.dumps(r, indent=2))
+            if not r["applicable"] or r["ready"] < r["applicable"]:
+                raise SystemExit(1)
+        elif not selftest(a.manifest, a.listener, a.rdp, a.http):
             raise SystemExit(1)
     elif a.cmd == "record":
         n = record(a.manifest, a.bait, a.location)
@@ -147,7 +158,7 @@ def main():
             manifest = json.load(f)
         import os
         log = a.log or os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
-        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log, merge_window=8)
+        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log, merge_window=8, fmt=a.format)
         if a.ui:
             from .ui import serve
             serve(alerter, a.ui_host, a.ui_port)

@@ -80,15 +80,37 @@ def webhook_payload(url, ev):
     return ev
 
 
+def chain_event(ev):
+    """One alert in the shared intent-chain format that SilentMesh and SIEMs can join on."""
+    action = ("warning_reentry" if ev.get("after_warning") else
+              "bait_use" if ev.get("severity") == "high" else "touch")
+    src = ev.get("source") or ""
+    return {
+        "time": ev.get("time"),
+        "clock": {"source": "system", "offset_ms": None},
+        "product": "lure",
+        "source_ip": ev.get("source_ip") or src.rsplit(":", 1)[0],
+        "asset": ev.get("location") or ev.get("bait_file") or "lure-listener",
+        "action": action,
+        "service": ev.get("service"),
+        "username": ev.get("username"),
+        "evidence_id": f"lure-{ev.get('id')}" if ev.get("id") else None,
+        "severity": ev.get("severity"),
+        "depth": ev.get("depth"),
+    }
+
+
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
-    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None, merge_window=0):
+    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None, merge_window=0,
+                 fmt="native"):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
         # Services whose username cannot be read (OpenVPN) are identified by port.
         # Only live baits own a port; a rotated set reuses the same ports.
         self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port") and not b.get("retired")}
         self.webhook, self.syslog, self.out = webhook, syslog, out
+        self.fmt = fmt
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
@@ -121,6 +143,7 @@ class Alerter:
             "severity": "high" if bait else "medium",
             "service": service,
             "source": f"{src_ip}:{src_port}",
+            "source_ip": src_ip,
             "username": username,
             "bait_file": bait["file"] if bait else None,
             "planted_on": bait["plant_on"] if bait else None,
@@ -253,14 +276,15 @@ class Alerter:
             pass
         if self.webhook:
             try:
-                req = urllib.request.Request(self.webhook, data=json.dumps(webhook_payload(self.webhook, ev)).encode(),
+                body = chain_event(ev) if self.fmt == "chain" else webhook_payload(self.webhook, ev)
+                req = urllib.request.Request(self.webhook, data=json.dumps(body).encode(),
                                              headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5).close()
             except OSError as e:
                 self.out(json.dumps({"error": f"webhook failed: {e}"}))
         if self.syslog:
             host, _, port = self.syslog.partition(":")
-            msg = f"<10>lure: {line}".encode()
+            msg = f"<10>lure: {json.dumps(chain_event(ev)) if self.fmt == 'chain' else line}".encode()
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.sendto(msg, (host, int(port or 514)))
 

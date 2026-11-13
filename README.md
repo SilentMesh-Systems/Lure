@@ -144,6 +144,14 @@ One bait login can be an accident. A sequence is harder to explain away. Every b
 - `after_warning`: the HTTP listener answers a bait login with an "authorised personnel only, access is logged" banner and asks again. Entering the bait credential a second time after that warning is flagged in its own alert.
 - `evidence`: what the alert shows, what it lets you conclude, and what it cannot (who the person is, their motive, or baits found but never tried; the address may be a NAT, VPN or pivot host).
 
+### Feed SilentMesh or a SIEM: `--format chain`
+
+`lure listen --format chain` (and `lure watch --format chain`) sends webhook and syslog alerts as one shared event: time, product, source_ip, asset, action (`bait_use`, `warning_reentry`, `touch`), evidence ID and depth. SilentMesh joins these with its decoy sessions so "bait used on IT, then a fake controller probed on OT" reads as one incident. Lure stays standalone; the format is just JSON.
+
+### Prove it is ready, even in a quiet month: `lure test --report`
+
+Prints a readiness report as JSON: did the test logins reach the listener, did the alert land, how old are the baits, is every bait's location recorded. It ends with a score such as "3 of 4 ready" and exits non-zero if anything is not, so it can run from cron and feed a monthly report. It states what it cannot prove: realism against a real attacker needs an authorised test.
+
 ## Catch bait logins on your real systems
 
 An attacker may type a bait login into your **real** VPN, Active Directory, SSH or web login instead of the listener. Lure can watch those systems' logs and alert when a bait username appears:

@@ -163,6 +163,55 @@ class DemonstratedIntentTest(unittest.TestCase):
         self.assertIn(b"Content-Length: %d" % len(body), head)
 
 
+class ChainAndReadinessTest(unittest.TestCase):
+    def test_chain_event_maps_actions(self):
+        from lure.listen import chain_event
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share", "location": "FS-01:/hr"}]}
+        a = Alerter(m, out=[].append)
+        first = chain_event(a.event("http", "10.1.1.1", 1, "u1", now=0))
+        self.assertEqual((first["product"], first["action"], first["source_ip"], first["asset"]),
+                         ("lure", "bait_use", "10.1.1.1", "FS-01:/hr"))
+        self.assertEqual(chain_event(a.event("http", "10.1.1.1", 2, "u1", now=5))["action"], "warning_reentry")
+        self.assertEqual(chain_event(a.event("rdp", "10.2.2.2", 1, None, now=6))["action"], "touch")
+
+    def test_readiness_reports_fail_when_listener_is_down(self):
+        import tempfile
+        from lure.selftest import readiness
+        from datetime import datetime, timezone, timedelta
+        now = datetime(2026, 11, 13, tzinfo=timezone.utc)
+        m = {"listener": "127.0.0.1", "generated": (now - timedelta(days=120)).isoformat(),
+             "baits": [{"username": "u1", "file": "a.rdp", "service": "rdp", "location": "WS-1"},
+                       {"username": "u2", "file": "b.url", "service": "http"}]}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "manifest.json")
+            with open(path, "w") as f:
+                json.dump(m, f)
+            r = readiness(path, rdp=free_port(), http=free_port(), now=now)
+        rows = {x["check"]: x["status"] for x in r["rows"]}
+        self.assertEqual(rows["functional"], "fail")
+        self.assertEqual(rows["bait_freshness"], "degraded")
+        self.assertEqual(rows["placement_recorded"], "degraded")
+        self.assertEqual(r["ready"], 0)
+        self.assertIn("authorised test", r["not_covered"])
+
+    def test_readiness_accepts_naive_generated_date(self):
+        from lure.selftest import readiness
+        from datetime import datetime, timezone
+        m = {"listener": "127.0.0.1", "generated": "2026-11-01T10:00:00",
+             "baits": [{"username": "u1", "file": "a.rdp", "service": "rdp"}]}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "manifest.json")
+            with open(path, "w") as f:
+                json.dump(m, f)
+            r = readiness(path, rdp=free_port(), http=free_port(), now=datetime(2026, 11, 13, tzinfo=timezone.utc))
+        self.assertEqual({x["check"]: x["status"] for x in r["rows"]}["bait_freshness"], "pass")
+
+    def test_chain_event_keeps_ipv6_source(self):
+        from lure.listen import chain_event
+        a = Alerter({"baits": [{"username": "u1", "file": "f", "plant_on": "x"}]}, out=[].append)
+        self.assertEqual(chain_event(a.event("rdp", "fe80::1", 4000, "u1", now=0))["source_ip"], "fe80::1")
+
+
 class EndToEndTest(unittest.TestCase):
     def test_http_login_with_bait_raises_alert(self):
         out = []

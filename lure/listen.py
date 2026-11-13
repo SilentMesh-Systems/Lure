@@ -173,11 +173,16 @@ class Alerter:
                          "is for authorised personnel only")
         elif now - self.seen.get(key, -1e18) < self.window:
             return None
-        self.sent = [t for t in self.sent if now - t < self.window]
-        if len(self.sent) >= self.max_per_window:
-            return None
+        if len(self.seen) > 10000:
+            self.seen = {k: t for k, t in self.seen.items() if now - t < self.window}
+        # The ceiling only applies to bare touches. A bait login always alerts,
+        # so a burst of junk connections can never silence a real one.
+        if bait is None:
+            self.sent = [t for t in self.sent if now - t < self.window]
+            if len(self.sent) >= self.max_per_window:
+                return None
+            self.sent.append(now)
         self.seen[key] = now
-        self.sent.append(now)
         if bait is not None:
             if service == "http" and not after_warning:
                 self.warned.add((src_ip, username))
@@ -289,8 +294,22 @@ class Alerter:
                 s.sendto(msg, (host, int(port or 514)))
 
 
+MAX_CONNECTIONS = 512
+
+
 async def _serve(alerter, service, port, parser, reply):
+    # A cap on open connections per port, so a flood cannot exhaust file
+    # handles and blind the listener before a bait is used.
+    slots = asyncio.Semaphore(MAX_CONNECTIONS)
+
     async def handle(reader, writer):
+        if slots.locked():
+            writer.close()
+            return
+        async with slots:
+            await _handle(reader, writer)
+
+    async def _handle(reader, writer):
         peer = writer.get_extra_info("peername") or ("?", 0)
         sock = writer.get_extra_info("sockname") or ("?", port)
         try:

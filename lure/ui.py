@@ -6,6 +6,7 @@ alert) needs a JSON POST from the dashboard's own origin, so a web page the
 operator happens to visit cannot do it for them.
 """
 
+import ipaddress
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -114,6 +115,8 @@ load();setInterval(load,3000);
 class _Handler(BaseHTTPRequestHandler):
     alerter = None
     allowed_origins = ()
+    allowed_hosts = ()
+    port = 0
 
     def log_message(self, *args):
         pass
@@ -130,7 +133,27 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _host_ok(self):
+        # DNS rebinding: a hostile page that points its own name at 127.0.0.1
+        # must not read the alerts. Only this dashboard's own host names pass.
+        host = self.headers.get("Host", "")
+        if host in self.allowed_hosts:
+            return True
+        # A literal IP address cannot be rebound, so a dashboard served on
+        # 0.0.0.0 still opens by the machine's address. Names other than
+        # localhost are refused.
+        name, _, port = host.rpartition(":")
+        if port != str(self.port):
+            return False
+        try:
+            ipaddress.ip_address(name.strip("[]"))
+            return True
+        except ValueError:
+            return False
+
     def do_GET(self):
+        if not self._host_ok():
+            return self._send(403, "forbidden", "text/plain")
         if self.path in ("/", "/index.html"):
             self._send(200, PAGE.replace("__VERSION__", __version__).replace("__MARK__", MARK_PNG_B64), "text/html; charset=utf-8")
         elif self.path == "/api/state":
@@ -139,6 +162,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, "not found", "text/plain")
 
     def do_POST(self):
+        if not self._host_ok():
+            return self._send(403, "forbidden", "text/plain")
         if self.path != "/api/ack":
             return self._send(404, "not found", "text/plain")
         # Refuse cross-site requests: JSON only, and the Origin must be this dashboard.
@@ -160,6 +185,8 @@ def serve(alerter, host="127.0.0.1", port=8765):
     handler = type("Handler", (_Handler,), {
         "alerter": alerter,
         "allowed_origins": (f"http://{host}:{port}", f"http://localhost:{port}", f"http://127.0.0.1:{port}"),
+        "allowed_hosts": (f"{host}:{port}", f"localhost:{port}", f"127.0.0.1:{port}"),
+        "port": port,
     })
     server = ThreadingHTTPServer((host, port), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()

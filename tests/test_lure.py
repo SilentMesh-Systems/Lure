@@ -121,9 +121,31 @@ class AlerterTest(unittest.TestCase):
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 1, "u1", now=0))
         self.assertIsNone(self.a.event("rdp", "10.1.1.1", 2, "u1", now=10))
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 3, "u1", now=700))
-        self.a.event("rdp", "10.2.2.2", 1, None, now=701)
-        self.a.event("rdp", "10.3.3.3", 1, None, now=702)
-        self.assertIsNone(self.a.event("rdp", "10.4.4.4", 1, None, now=703))
+        for i in range(3):
+            self.assertIsNotNone(self.a.event("rdp", f"10.2.2.{i}", 1, None, now=701 + i))
+        self.assertIsNone(self.a.event("rdp", "10.4.4.4", 1, None, now=710))
+
+    def test_touch_flood_never_silences_a_bait_login(self):
+        for i in range(50):
+            self.a.event("rdp", f"10.9.9.{i}", 1, None, now=i)
+        ev = self.a.event("http", "10.7.7.7", 1, "u1", now=60)
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["severity"], "high")
+
+    def test_dashboard_refuses_foreign_host(self):
+        import urllib.request, urllib.error
+        from lure.ui import serve
+        port = free_port()
+        srv = serve(self.a, "127.0.0.1", port)
+        try:
+            ok = urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=5)
+            self.assertEqual(ok.status, 200)
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/state", headers={"Host": "evil.example:80"})
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(e.exception.code, 403)
+        finally:
+            srv.shutdown()
 
 
 class DemonstratedIntentTest(unittest.TestCase):

@@ -12,6 +12,8 @@ antivirus scans, backups and search indexing never raise an alert.
 """
 
 import json
+import ipaddress
+import re
 import os
 import random
 import secrets
@@ -220,6 +222,22 @@ def _xlsx(path, sheets, author, created, modified):
             z.writestr(name, data)
 
 
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+
+
+def _check_host(value, what):
+    """A listener or zone goes into RDP, VPN and URL baits verbatim: only a bare
+    hostname or IP address may, so nothing can smuggle extra lines into them."""
+    try:
+        ipaddress.ip_address(value)
+        return value
+    except ValueError:
+        pass
+    if not isinstance(value, str) or not _HOSTNAME.match(value):
+        raise ValueError(f"{what} must be a hostname or IP address, got {value!r}")
+    return value
+
+
 def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
              http_port=8080, rdp_port=3389, retired=None, dns_zone=None):
     """Write a convincing bait set into out_dir and return the manifest.
@@ -229,6 +247,9 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     retired: baits from an earlier set (see rotate); they stay in the manifest
     so a credential stolen months ago still raises an alert.
     """
+    _check_host(listener, "listener")
+    if dns_zone:
+        _check_host(dns_zone.strip("."), "dns zone")
     p = load_profile(profile)
     os.makedirs(out_dir, exist_ok=True)
     names = _Names(b["username"] for b in (retired or []))

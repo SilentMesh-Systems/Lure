@@ -82,7 +82,10 @@ def webhook_payload(url, ev):
 
 def chain_event(ev):
     """One alert in the shared intent-chain format that SilentMesh and SIEMs can join on."""
-    action = ("warning_reentry" if ev.get("after_warning") else
+    # A DNS bait's source is the resolver, and UDP sources can be forged, so a
+    # lookup is reported but never starts an intent chain on its own.
+    action = ("bait_lookup" if ev.get("service") == "dns" and ev.get("severity") == "high" else
+              "warning_reentry" if ev.get("after_warning") else
               "bait_use" if ev.get("severity") == "high" else "touch")
     src = ev.get("source") or ""
     return {

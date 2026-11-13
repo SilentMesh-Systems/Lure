@@ -148,6 +148,17 @@ class AlerterTest(unittest.TestCase):
             srv.shutdown()
 
 
+class ListenerValidationTest(unittest.TestCase):
+    def test_listener_with_injected_lines_is_refused(self):
+        from lure.generate import generate
+        with tempfile.TemporaryDirectory() as d:
+            for bad in ["10.0.0.1\nscript-security 2", "host 1194\nup /bin/sh", "a b", "", "x;rm"]:
+                with self.assertRaises(ValueError):
+                    generate(bad, d)
+            for good in ["10.0.5.20", "lure-01.corp.example", "fe80::1"]:
+                generate(good, os.path.join(d, good.replace(":", "_")))
+
+
 class DemonstratedIntentTest(unittest.TestCase):
     def setUp(self):
         m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"},
@@ -195,6 +206,7 @@ class ChainAndReadinessTest(unittest.TestCase):
                          ("lure", "bait_use", "10.1.1.1", "FS-01:/hr"))
         self.assertEqual(chain_event(a.event("http", "10.1.1.1", 2, "u1", now=5))["action"], "warning_reentry")
         self.assertEqual(chain_event(a.event("rdp", "10.2.2.2", 1, None, now=6))["action"], "touch")
+        self.assertEqual(chain_event(a.event("dns", "10.3.3.3", 53, "u1", now=7))["action"], "bait_lookup")
 
     def test_readiness_reports_fail_when_listener_is_down(self):
         import tempfile

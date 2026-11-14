@@ -90,7 +90,7 @@ function render(st){
   st.baits.forEach(function(b){
     if(b.triggered)hit++;
     var t=el('div','tile'+(b.triggered?' hit':''));t.appendChild(el('span','dot'));
-    var x=el('div');x.appendChild(el('div','f',b.file+(b.port?' :'+b.port:'')));x.appendChild(el('div','w',(b.triggered?'TRIGGERED · ':'')+(b.location||b.plant_on||'')));
+    var x=el('div');x.appendChild(el('div','f',b.file+(b.port?' :'+b.port:'')));x.appendChild(el('div','w',(b.triggered?'TRIGGERED · ':'')+(b.location||b.plant_on||'')+(b.actor?' · '+b.actor:'')));
     t.appendChild(x);tiles.appendChild(t);
   });
   var pe=document.getElementById('paths');pe.textContent='';var ips=Object.keys(st.paths||{});

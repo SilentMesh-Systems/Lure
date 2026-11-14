@@ -43,18 +43,19 @@ def my_ip():
         return "127.0.0.1"
 
 
-def init(out_dir="baits", listener=None, profile="it", out=print):
+def init(out_dir="baits", listener=None, profile="it", out=print, storyline=None):
     manifest = os.path.join(out_dir, "manifest.json")
     if os.path.exists(manifest):
         out(f"{manifest} already exists. Use `lure rotate` for fresh baits, or `lure init --out other-folder`.")
         return None
     c = cmd()
     host = listener or my_ip()
-    m = generate(host, out_dir, profile=profile)
+    m = generate(host, out_dir, profile=profile, storyline=storyline)
     files = sorted({b["file"] for b in m["baits"]})
     out(f"wrote {len(files)} bait files to {out_dir}/, every login in them points at {host}")
     for f in files:
         out(f"  {f}")
+    out(f"The files tell one story ({m['storyline']['name']}): {m['storyline']['summary']}")
     out("")
     out("Next:")
     if host.startswith("127."):

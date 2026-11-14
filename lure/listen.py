@@ -57,6 +57,8 @@ def webhook_payload(url, ev):
     if where:
         lines.append(f"Planted: {where}")
     lines.append(f"From {ev.get('source')} over {ev.get('service')}" + (f" as {ev['username']}" if ev.get("username") else ""))
+    if ev.get("actor"):
+        lines.append(f"The login belonged to {ev['actor']}, a fictional person; nobody real uses it")
     d = ev.get("depth")
     if d and (d["baits_used"] > 1 or d["after_warning"]):
         lines.append(f"Same source: {d['baits_used']} bait(s), {d['attempts']} attempt(s)"
@@ -74,7 +76,8 @@ def webhook_payload(url, ev):
                 "summary": head, "title": head,
                 "sections": [{"facts": [{"name": k, "value": str(v)} for k, v in
                               [("Planted", where), ("Source", ev.get("source")), ("Service", ev.get("service")),
-                               ("Username", ev.get("username")), ("Time", ev.get("time")), ("Why", ev.get("why"))] if v]}]}
+                               ("Username", ev.get("username")), ("Belonged to", ev.get("actor")),
+                               ("Time", ev.get("time")), ("Why", ev.get("why"))] if v]}]}
     if "api.telegram.org" in url:
         return {"text": text}
     return ev
@@ -151,6 +154,8 @@ class Alerter:
             "bait_file": bait["file"] if bait else None,
             "planted_on": bait["plant_on"] if bait else None,
             "location": bait.get("location") if bait else None,
+            "actor": bait.get("actor") if bait else None,
+            "storyline": (self.manifest.get("storyline") or {}).get("name") if bait else None,
             "retired": bool(bait and bait.get("retired")),
             "why": ("a bait username appeared in a real system's log: someone tried it against a real service"
                     if bait and service.startswith("log:") else

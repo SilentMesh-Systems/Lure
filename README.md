@@ -89,6 +89,8 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
 
    Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_vcenter2`, `vendor.infosys`), never random strings, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
 
+   Every set tells one story with one cast. Three fictional people (an IT contact, a vendor engineer or successor, a manager) write, receive and are named in every file: the spreadsheet's author is the person whose RDP file sits on the desktop, the email is from them to the engineer, and their usernames are built from their names (`Farhan Khan` owns `f.khan_adm`). Pick the story with `--storyline vendor` (remote access handed to a vendor and never cleaned up) or `--storyline admin` (an admin left, the handover was never finished); by default one is picked for you. `manifest.json` records the cast, so an alert says whose credential was tried, and the dashboard shows it next to each bait. Nobody in the cast exists.
+
    Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `home` (router, NAS, CCTV, for a Raspberry Pi at home), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES). Or bring your own: copy `profiles/legal.json` (also `education.json`, `retail.json`), change the systems, vendors and wording, and pass the file with `--profile my-org.json`. Pull requests with new profiles are welcome.
 
    After planting, record exactly where each bait lives, so the alert can say so:

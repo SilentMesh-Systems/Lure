@@ -4,7 +4,7 @@ import json
 import sys
 
 from . import __version__
-from .generate import PROFILES, generate, record, rotate
+from .generate import PROFILES, STORYLINES, generate, record, rotate
 from .listen import Alerter, run
 
 
@@ -17,6 +17,7 @@ def main():
     ini.add_argument("--out", default="baits")
     ini.add_argument("--listener", help="use this address instead of this machine's own")
     ini.add_argument("--profile", default="it", help="it (default), office, home, plant, bank, hospital, or a JSON profile file")
+    ini.add_argument("--storyline", choices=sorted(STORYLINES), help="the story the baits tell together (default: picked at random)")
 
     g = sub.add_parser("generate", help="write a set of bait files")
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
@@ -24,6 +25,9 @@ def main():
     g.add_argument("--site", default="site")
     g.add_argument("--profile", default="it",
                    help="it (default), office, home, plant, bank, hospital, or a JSON profile file such as profiles/legal.json")
+    g.add_argument("--storyline", choices=sorted(STORYLINES),
+                   help="vendor (remote access never cleaned up) or admin (a leaver's unfinished handover); default: random. "
+                        "The same three fictional people appear in every bait")
     g.add_argument("--dns-zone", help="a subdomain delegated to the listener (NS record); adds a DNS bait hostname")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
@@ -31,6 +35,7 @@ def main():
     ro = sub.add_parser("rotate", help="replace the baits with fresh ones; old ones keep alerting")
     ro.add_argument("--manifest", default="baits/manifest.json")
     ro.add_argument("--profile", help="built-in profile name or a JSON profile file")
+    ro.add_argument("--storyline", choices=sorted(STORYLINES), help="change the storyline (default: keep the current one)")
 
     r = sub.add_parser("record", help="record where a bait was actually planted")
     r.add_argument("bait", help="bait username or file name")
@@ -94,18 +99,20 @@ def main():
     a = p.parse_args()
     if a.cmd == "init":
         from .init import init
-        if init(a.out, a.listener, a.profile) is None:
+        if init(a.out, a.listener, a.profile, storyline=a.storyline) is None:
             raise SystemExit(1)
         return
     if a.cmd == "generate":
-        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile, dns_zone=a.dns_zone)
+        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile, dns_zone=a.dns_zone,
+                     storyline=a.storyline)
         files = sorted({b["file"] for b in m["baits"]})
         print(f"wrote {len(m['baits'])} bait credentials in {len(files)} files to {a.out}/ (see manifest.json for where to plant each)")
+        print(f"storyline: {m['storyline']['name']}. {m['storyline']['summary']}")
         for name in files:
             print(f"  {name}")
         print(f"prove it works: lure test --manifest {a.out}/manifest.json")
     elif a.cmd == "rotate":
-        kw = {"profile": a.profile} if a.profile else {}
+        kw = {k: v for k, v in (("profile", a.profile), ("storyline", a.storyline)) if v}
         m = rotate(a.manifest, **kw)
         live = [b for b in m["baits"] if not b.get("retired")]
         print(f"rotated: {len(live)} fresh baits written; {len(m['baits']) - len(live)} retired baits still alert")

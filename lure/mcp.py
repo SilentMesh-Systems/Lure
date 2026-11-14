@@ -15,7 +15,7 @@ import os
 import sys
 
 from . import __version__
-from .generate import PROFILES, generate, record, rotate
+from .generate import PROFILES, STORYLINES, generate, record, rotate
 
 PROTOCOL = "2026-07-28"
 LEGACY = ["2025-11-25", "2025-06-18"]  # handshake-era versions, still served via `initialize`
@@ -54,6 +54,8 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "listener": {"type": "string", "description": "host or IP of the machine that runs `lure listen`"},
          "profile": {"type": "string", "enum": sorted(PROFILES), "default": "it"},
+         "storyline": {"type": "string", "enum": sorted(STORYLINES),
+                       "description": "the story the baits tell together; omitted: picked at random"},
          "vpn_count": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1}},
          "required": ["listener"], "additionalProperties": False}},
     {"name": "lure_record",
@@ -65,7 +67,8 @@ TOOLS = [
     {"name": "lure_rotate",
      "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files and restart `lure listen` afterwards. Local files only.",
      "inputSchema": {"type": "object", "properties": {
-         "profile": {"type": "string", "enum": sorted(PROFILES)}}, "additionalProperties": False}},
+         "profile": {"type": "string", "enum": sorted(PROFILES)},
+         "storyline": {"type": "string", "enum": sorted(STORYLINES)}}, "additionalProperties": False}},
     {"name": "lure_acknowledge",
      "description": "Mark one alert as investigated, by its id from lure_alerts. Sets acknowledged=true in the local alert log; the alert itself is kept, never deleted. Repeating it is harmless. Errors if no alert has that id.",
      "inputSchema": {"type": "object", "properties": {"id": {"type": "integer"}},
@@ -101,7 +104,7 @@ class Server:
 
     @staticmethod
     def _public(b, fired):
-        return {k: b.get(k) for k in ("file", "username", "service", "port", "plant_on", "location", "retired")
+        return {k: b.get(k) for k in ("file", "username", "service", "port", "plant_on", "location", "actor", "retired")
                 if b.get(k) is not None} | {"triggered": b["username"] in fired}
 
     # --- tools ----------------------------------------------------------
@@ -132,11 +135,12 @@ class Server:
         fired = {a["username"] for a in alerts if a.get("severity") == "high"}
         return {"baits": [self._public(b, fired) for b in self._manifest().get("baits", []) if not b.get("retired")]}
 
-    def lure_generate(self, listener, profile="it", vpn_count=1):
+    def lure_generate(self, listener, profile="it", vpn_count=1, storyline=None):
         if os.path.exists(self.manifest_path) and self._manifest().get("baits"):
             raise ValueError("a bait set already exists here; use lure_rotate to replace it")
-        m = generate(listener, self.dir, profile=profile, vpn_count=vpn_count)
+        m = generate(listener, self.dir, profile=profile, vpn_count=vpn_count, storyline=storyline)
         return {"written": sorted({b["file"] for b in m["baits"]}), "baits": len(m["baits"]), "folder": self.dir,
+                "storyline": m["storyline"],
                 "next": "Plant the files, record each with lure_record, and run `lure listen` on the listener host."}
 
     def lure_record(self, bait, location):
@@ -145,8 +149,8 @@ class Server:
             raise ValueError(f"no live bait named {bait!r}")
         return {"updated": n, "location": location}
 
-    def lure_rotate(self, profile=None):
-        kw = {"profile": profile} if profile else {}
+    def lure_rotate(self, profile=None, storyline=None):
+        kw = {k: v for k, v in (("profile", profile), ("storyline", storyline)) if v}
         m = rotate(self.manifest_path, **kw)
         live = [b for b in m["baits"] if not b.get("retired")]
         return {"fresh": sorted({b["file"] for b in live}), "retired_still_alerting": len(m["baits"]) - len(live),

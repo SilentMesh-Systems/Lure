@@ -34,7 +34,8 @@ class GenerateTest(unittest.TestCase):
             with zipfile.ZipFile(os.path.join(d, sheet)) as z:
                 self.assertIsNone(z.testzip())
                 xml = z.read("xl/worksheets/sheet1.xml").decode() + z.read("xl/worksheets/sheet2.xml").decode()
-                self.assertIn("IT Support", z.read("docProps/core.xml").decode())
+                lead = m["storyline"]["cast"][0]["name"]
+                self.assertIn(lead, z.read("docProps/core.xml").decode())
             for b in m["baits"]:
                 if b["file"] == sheet:
                     self.assertIn(b["username"], xml)
@@ -78,6 +79,76 @@ class GenerateTest(unittest.TestCase):
                 m = generate("10.0.5.20", d, profile=prof)
                 self.assertEqual(m["profile"], prof)
                 self.assertGreaterEqual(len(m["baits"]), 12)
+
+    def test_storyline_has_one_consistent_cast(self):
+        from lure.generate import STORYLINES
+        for name in STORYLINES:
+            with tempfile.TemporaryDirectory() as d:
+                m = generate("10.0.5.20", d, storyline=name)
+                s = m["storyline"]
+                self.assertEqual(s["name"], name)
+                cast = s["cast"]
+                self.assertEqual(len(cast), 3)
+                self.assertEqual(len({c["name"] for c in cast}), 3)
+                lead, engineer, manager = (c["name"] for c in cast)
+                for c in cast:
+                    self.assertIn(c["name"], s["summary"])
+                # Every bait belongs to someone in the cast, and the cast lists it.
+                owned = {u for c in cast for u in c["usernames"]}
+                for b in m["baits"]:
+                    self.assertIn(b["actor"], (lead, engineer, manager), b)
+                    self.assertIn(b["username"], owned)
+                # The lead's RDP username is built from their name, not a stranger's.
+                rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+                first, surname = lead.lower().split()
+                self.assertTrue(first[0] in rdp["username"] and (surname in rdp["username"] or surname[0] in rdp["username"]),
+                                (lead, rdp["username"]))
+                self.assertEqual(rdp["actor"], lead)
+                # The email is from the lead, names the engineer and the manager, and never a stranger.
+                eml = next(b["file"] for b in m["baits"] if b["file"].endswith(".eml"))
+                with open(os.path.join(d, eml)) as f:
+                    text = f.read()
+                self.assertIn(f"From: {lead} <", text)
+                self.assertIn(engineer.split()[0], text)
+                self.assertIn(manager, text)
+                self.assertNotIn("-it.local", text)
+                # The spreadsheet is authored by the lead.
+                sheet = next(b["file"] for b in m["baits"] if b["file"].endswith(".xlsx"))
+                with zipfile.ZipFile(os.path.join(d, sheet)) as z:
+                    self.assertIn(lead, z.read("docProps/core.xml").decode())
+
+    def test_storyline_default_and_errors(self):
+        from lure.generate import STORYLINES
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            self.assertIn(m["storyline"]["name"], STORYLINES)
+            with self.assertRaises(ValueError):
+                generate("10.0.5.20", d, storyline="thriller")
+
+    def test_rotate_keeps_storyline_unless_changed(self):
+        from lure.generate import rotate
+        with tempfile.TemporaryDirectory() as d:
+            old = generate("10.0.5.20", d, storyline="admin")
+            new = rotate(os.path.join(d, "manifest.json"))
+            self.assertEqual(new["storyline"]["name"], "admin")
+            self.assertNotEqual(new["storyline"]["cast"], old["storyline"]["cast"])
+            new2 = rotate(os.path.join(d, "manifest.json"), storyline="vendor")
+            self.assertEqual(new2["storyline"]["name"], "vendor")
+
+    def test_alert_names_the_fictional_owner(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d, storyline="vendor")
+            rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+            out = []
+            ev = Alerter(m, out=out.append).event("rdp", "10.9.9.9", 1, rdp["username"], now=0)
+            self.assertEqual(ev["actor"], rdp["actor"])
+            self.assertEqual(ev["storyline"], "vendor")
+            from lure.listen import webhook_payload
+            msg = webhook_payload("https://hooks.slack.com/x", ev)["text"]
+            self.assertIn(rdp["actor"], msg)
+            self.assertIn("fictional", msg)
+            touch = Alerter(m, out=[].append).event("http", "10.9.9.9", 2, "nobody", now=0)
+            self.assertIsNone(touch["actor"])
 
     def test_rotate_keeps_old_baits_alerting(self):
         from lure.generate import rotate

@@ -29,7 +29,27 @@ FIRST = list("aabcdghjkmnprssstv")
 SURNAMES = ["patil", "sharma", "iyer", "rao", "nair", "verma", "kulkarni", "reddy", "menon", "das",
             "joshi", "pillai", "gupta", "bose", "khan", "shetty", "naidu", "bhat", "kumar", "mehta",
             "fernandes", "singh", "chandra", "hegde", "murthy", "dutta", "ghosh", "pandey", "jain", "saxena"]
-PEOPLE = ["Ravi", "Suresh", "Anita", "Prakash", "Deepa", "Karthik", "Meena", "Vinod", "Farhan", "Lakshmi"]
+PEOPLE = ["Ravi", "Suresh", "Anita", "Prakash", "Deepa", "Karthik", "Meena", "Vinod", "Farhan", "Lakshmi",
+          "Priya", "Arjun", "Nikhil", "Sunita", "Rajesh", "Kavita", "Imran", "Shalini", "Manoj", "Geetha"]
+
+# A storyline is the small office drama the baits tell together. Every file in a
+# set is written by, to or about the same three fictional people, so an intruder
+# who reads one bait finds the same names in the next, and the alert can say
+# whose credential was tried. The people never exist; the logins never work.
+STORYLINES = {
+    "vendor": {
+        "title": "vendor remote access that was never cleaned up",
+        "roles": {"lead": "internal IT contact", "engineer": "vendor support engineer", "manager": "IT manager"},
+        "summary": "{lead} ({dept}) gave {engineer} of {vendor} temporary remote access before {event}; "
+                   "the logins were never rotated and {manager} does not know they exist.",
+    },
+    "admin": {
+        "title": "an admin left and the handover was never finished",
+        "roles": {"lead": "departing IT admin", "engineer": "successor", "manager": "IT manager"},
+        "summary": "{lead} left {dept} after {event} and handed the accounts to {engineer}; "
+                   "the {vendor} vendor login and the shared admin were never rotated, and {manager} signed it off.",
+    },
+}
 
 # What the baits talk about, per kind of site. Systems point at the listener's
 # HTTP port; the paths make each row look like a different application.
@@ -123,6 +143,12 @@ class _Names:
         return self._unique(lambda: f"{_rng.choice(FIRST)}.{_rng.choice(SURNAMES)}"
                             + _rng.choice(["_" + role, "_" + role, "", "2", "_ot", "_it"]))
 
+    def person_of(self, first, surname, role="adm"):
+        """A username a real IT team would have given this person."""
+        f, s = first.lower(), surname.lower()
+        return self._unique(lambda: _rng.choice([f"{f[0]}.{s}", f"{f}.{s[0]}", f"{f[0]}{s}", f"{f}.{s}"])
+                            + _rng.choice(["_" + role, "_" + role, "", "2", "_it"]))
+
     def service(self, base):
         return self._unique(lambda: base + _rng.choice(["", "2", "_old", "01", "_rw", "_bkp", "3"]))
 
@@ -130,6 +156,33 @@ class _Names:
         v = vendor.lower().split()[0]
         return self._unique(lambda: _rng.choice([f"{v}.support", f"vendor.{v}", f"{v}_remote", f"{v}.svc"])
                             + _rng.choice(["", "1", "2", "_in"]))
+
+
+def _slug(text):
+    s = re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")
+    return s or "corp"
+
+
+def pick_storyline(storyline):
+    if storyline is None:
+        return _rng.choice(sorted(STORYLINES))
+    if storyline not in STORYLINES:
+        raise ValueError(f"unknown storyline {storyline!r}; choose from {', '.join(sorted(STORYLINES))}")
+    return storyline
+
+
+def _cast(storyline, p, vendor):
+    """Three fictional people with distinct names, one per role, for this run."""
+    firsts = _rng.sample(PEOPLE, 3)
+    surnames = _rng.sample(SURNAMES, 3)
+    cast = {}
+    for role, (first, surname) in zip(STORYLINES[storyline]["roles"], zip(firsts, surnames)):
+        cast[role] = {"role": STORYLINES[storyline]["roles"][role], "first": first,
+                      "surname": surname.capitalize(), "name": f"{first} {surname.capitalize()}"}
+    summary = STORYLINES[storyline]["summary"].format(
+        lead=cast["lead"]["name"], engineer=cast["engineer"]["name"], manager=cast["manager"]["name"],
+        vendor=vendor, dept=p["dept"], event=p["event"])
+    return cast, summary
 
 
 def _password(words):
@@ -239,11 +292,13 @@ def _check_host(value, what):
 
 
 def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
-             http_port=8080, rdp_port=3389, retired=None, dns_zone=None):
+             http_port=8080, rdp_port=3389, retired=None, dns_zone=None, storyline=None):
     """Write a convincing bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`. Pick one
     nothing legitimate ever logs into. profile: it (default), office, home, plant, bank or hospital.
+    storyline: vendor or admin (see STORYLINES); None picks one. The same three
+    fictional people appear in every bait of the set.
     retired: baits from an earlier set (see rotate); they stay in the manifest
     so a credential stolen months ago still raises an alert.
     """
@@ -251,18 +306,23 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     if dns_zone:
         _check_host(dns_zone.strip("."), "dns zone")
     p = load_profile(profile)
+    storyline = pick_storyline(storyline)
     os.makedirs(out_dir, exist_ok=True)
     names = _Names(b["username"] for b in (retired or []))
     baits, files = [], []
-    person, helper = _rng.sample(PEOPLE, 2)
     vendor = _rng.choice(p["vendors"])
+    cast, summary = _cast(storyline, p, vendor)
+    lead, engineer, manager = cast["lead"], cast["engineer"], cast["manager"]
+    person, helper = lead["first"], (manager["first"] if storyline == "vendor" else engineer["first"])
+    domain = f"{_slug(site) if site != 'site' else 'corp'}.local"
     jump = p["jump"]
     web = f"http://{listener}:{http_port}"
     when = _old_date()
 
-    def add(file, service, username, plant_on, leads_to=(), **extra):
+    def add(file, service, username, plant_on, leads_to=(), actor=None, **extra):
         baits.append(dict({"file": file, "service": service, "username": username, "plant_on": plant_on,
-                           "leads_to": list(leads_to), "location": None}, **extra))
+                           "leads_to": list(leads_to), "location": None,
+                           "actor": (actor or lead)["name"]}, **extra))
 
     sheet_name = _rng.choice(p["sheet"])
     rdp_name = _rng.choice([f"DO NOT DELETE - {jump}.rdp", f"{jump} (admin).rdp", f"{jump.lower()}.rdp"])
@@ -273,7 +333,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     git_name = ".git-credentials"
 
     # 1. The saved Remote Desktop connection: the crown jewel an intruder wants.
-    rdp_user, rdp_pw = names.person("adm"), _password(p["words"])
+    rdp_user, rdp_pw = names.person_of(lead["first"], lead["surname"], "adm"), _password(p["words"])
     with open(os.path.join(out_dir, rdp_name), "w", newline="\r\n") as f:
         f.write(f"full address:s:{listener}:{rdp_port}\nusername:s:{rdp_user}\n"
                 "prompt for credentials:i:1\nscreen mode id:i:2\nauthentication level:i:2\n"
@@ -290,10 +350,11 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
             f.write("client\ndev tun\nproto tcp\n"
                     f"remote {listener} {port}\n"
                     "auth-user-pass\nnobind\npersist-key\npersist-tun\nremote-cert-tls server\nverb 3\n"
-                    f"# {vendor} remote support login: {u} / {pw}\n"
+                    f"# {vendor} remote support login ({engineer['name'] if storyline == 'vendor' else vendor}): {u} / {pw}\n"
                     f"# for the internal servers, ask {person} for the {jump} RDP file\n")
         files.append(name)
-        add(name, "openvpn", u, "jump host or vendor laptop share", [rdp_name], port=port)
+        add(name, "openvpn", u, "jump host or vendor laptop share", [rdp_name], port=port,
+            actor=engineer if storyline == "vendor" else lead)
         vpns.append((u, pw, port))
 
     # 3. The messy spreadsheet: notes, a "temporary" shared admin, an old sheet.
@@ -302,7 +363,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         u, pw = names.service(base), _password(p["words"])
         sys_rows.append([title, f"{web}{path}", u, pw])
         add(sheet_name, "http", u, f"file share ({title} row)", [rdp_name])
-    shared_user, shared_pw = names.person("adm"), _password(p["words"])
+    shared_user, shared_pw = names.service("itadmin"), _password(p["words"])
     add(sheet_name, "http", shared_user, "file share (shared admin row)", [rdp_name], note="the planted mistake")
     old_rows = []
     for title, path, base in p["systems"][:2]:
@@ -316,7 +377,8 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     rows += [r + [_rng.choice(["", "read-only", "ask " + helper + " before changing", "same as last year"]), mod]
              for r in sys_rows]
     rows.append(["Shared admin (temporary)", f"{web}/admin", shared_user, shared_pw,
-                 f"TODO: rotate after {p['event']}", mod])
+                 f"TODO: rotate after {p['event']}" if storyline == "vendor" else
+                 f"TODO: rotate once {lead['first']} has left, {helper} to own", mod])
     dns_label = None
     if dns_zone:
         dns_label = _rng.choice(["nas-archive", "backup", "fs-old", "vault", "share-arch"]) + str(_rng.randint(2, 19)).zfill(2)
@@ -324,18 +386,20 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         rows.append(["Backup NAS (old)", f"\\\\{dns_label}.{dns_zone}\\backup", du, dpw, "still mounted on some PCs", mod])
         add(sheet_name, "dns", du, "file share (backup NAS row)", dns_label=dns_label)
     rows.append([f"{vendor} VPN", f"{listener}:{vpns[0][2]}", vpns[0][0], vpns[0][1],
-                 f"vendor only, profile on jump host ({vpn_names[0]})", mod])
+                 f"vendor only ({engineer['first']} at {vendor}), profile on jump host ({vpn_names[0]})"
+                 if storyline == "vendor" else f"vendor only, profile on jump host ({vpn_names[0]})", mod])
     _xlsx(os.path.join(out_dir, sheet_name),
           [("Logins", rows), ("Old - do not use", [rows[0]] + old_rows)],
-          author=p["dept"], created=when - timedelta(days=_rng.randint(60, 400)), modified=when)
+          author=lead["name"], created=when - timedelta(days=_rng.randint(60, 400)), modified=when)
     files.append(sheet_name)
 
     # 4. A browser password export, the kind left in Downloads.
     csv_rows = []
+    browser_owner = engineer if storyline == "admin" else lead
     for title, path, base in p["systems"][:2]:
-        u, pw = names.person("ro"), _password(p["words"])
+        u, pw = names.person_of(browser_owner["first"], browser_owner["surname"], "ro"), _password(p["words"])
         csv_rows.append(f"{title},{web}{path}/login,{u},{pw}")
-        add(csv_name, "http", u, "a user's Downloads folder")
+        add(csv_name, "http", u, f"{browser_owner['first']}'s Downloads folder", actor=browser_owner)
     with open(os.path.join(out_dir, csv_name), "w") as f:
         f.write("name,url,username,password\n" + "\n".join(csv_rows) + "\n")
     files.append(csv_name)
@@ -350,17 +414,27 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     # 6. An email that leaks a login and points at the other baits.
     eu, epw = names.vendor(vendor), _password(p["words"])
     sent = (when + timedelta(days=_rng.randint(1, 20))).strftime("%a, %d %b %Y %H:%M:%S +0530")
-    with open(os.path.join(out_dir, eml_name), "w", newline="\r\n") as f:
-        f.write(f"From: {person} <{person.lower()}@{profile}-it.local>\n"
-                f"To: {vendor} Support <support@{vendor.lower().split()[0]}.example>\n"
-                f"Subject: Re: {vendor} remote access\nDate: {sent}\n\n"
-                f"Hi,\n\nTemporary web login for your engineer until the VPN is sorted:\n\n"
+    mail = lambda c: f"{c['name']} <{c['first'].lower()}.{c['surname'].lower()}@{domain}>"
+    if storyline == "vendor":
+        to = f"{engineer['name']} <{engineer['first'].lower()}.{engineer['surname'].lower()}@{_slug(vendor)}.example>"
+        cc = f"Cc: {mail(manager)}\n"
+        body = (f"Hi {engineer['first']},\n\nTemporary web login for you until the VPN is sorted:\n\n"
                 f"  {web}/vendor\n  user: {eu}\n  pass: {epw}\n\n"
-                f"The VPN profile is on the jump host ({vpn_names[0]}). Full list is in {sheet_name} on the share.\n"
+                f"The VPN profile is on the jump host ({vpn_names[0]}). Full list is in {sheet_name} on the share.\n")
+    else:
+        to, cc = mail(engineer), f"Cc: {mail(manager)}\n"
+        body = (f"Hi {engineer['first']},\n\nHandover, part 2. The {vendor} support login we never rotated:\n\n"
+                f"  {web}/vendor\n  user: {eu}\n  pass: {epw}\n\n"
+                f"Their VPN profile is on the jump host ({vpn_names[0]}). Everything else is in {sheet_name} on the share; "
+                f"the {jump} RDP file is on my desktop, {manager['first']} knows.\n")
+    with open(os.path.join(out_dir, eml_name), "w", newline="\r\n") as f:
+        f.write(f"From: {mail(lead)}\nTo: {to}\n{cc}"
+                f"Subject: Re: {vendor} remote access\nDate: {sent}\n\n" + body
                 + (f"Old backups are still on \\\\{dns_label}.{dns_zone}\\backup if you need them.\n" if dns_label else "") + "\n"
-                f"Regards,\n{person}\n{p['dept']}\n")
+                f"Regards,\n{lead['first']}\n{p['dept']}\n")
     files.append(eml_name)
-    add(eml_name, "http", eu, "a mailbox export or Documents folder", [vpn_names[0], sheet_name])
+    add(eml_name, "http", eu, "a mailbox export or Documents folder", [vpn_names[0], sheet_name],
+        actor=engineer if storyline == "vendor" else lead)
 
     # 7. A QR code on an "IT helpdesk" notice: scanning it opens a URL with a token.
     from .qr import encode, to_png
@@ -392,6 +466,10 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         "site": site,
         "profile": profile,
         "dns_zone": dns_zone,
+        "storyline": {"name": storyline, "title": STORYLINES[storyline]["title"], "summary": summary,
+                      "cast": [{"name": c["name"], "role": c["role"],
+                                "usernames": sorted(b["username"] for b in baits if b["actor"] == c["name"])}
+                               for c in (lead, engineer, manager)]},
         "baits": baits + [dict(b, retired=True) for b in (retired or [])],
     }
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
@@ -417,6 +495,7 @@ def rotate(manifest_path, out_dir=None, **kwargs):
             os.makedirs(old_dir, exist_ok=True)
             os.replace(src, os.path.join(old_dir, name))
     kwargs.setdefault("dns_zone", old.get("dns_zone"))
+    kwargs.setdefault("storyline", (old.get("storyline") or {}).get("name"))
     return generate(old["listener"], out_dir, site=old.get("site", "site"),
                     profile=kwargs.pop("profile", old.get("profile", "it")), retired=retired, **kwargs)
 

@@ -16,8 +16,6 @@ import ipaddress
 import re
 import os
 import random
-import secrets
-import time
 import zipfile
 from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
@@ -270,9 +268,14 @@ def _xlsx(path, sheets, author, created, modified):
     }
     for i, (_, rows) in enumerate(sheets, start=1):
         parts[f"xl/worksheets/sheet{i}.xml"] = sheet_xml(rows)
+    # The zip entries inside the workbook carry their own timestamps; Excel
+    # writes the save time there, so they must agree with the metadata.
+    stamp = modified.timetuple()[:6]
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in parts.items():
-            z.writestr(name, data)
+            info = zipfile.ZipInfo(name, date_time=stamp)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
 
 
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
@@ -350,7 +353,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
             f.write("client\ndev tun\nproto tcp\n"
                     f"remote {listener} {port}\n"
                     "auth-user-pass\nnobind\npersist-key\npersist-tun\nremote-cert-tls server\nverb 3\n"
-                    f"# {vendor} remote support login ({engineer['name'] if storyline == 'vendor' else vendor}): {u} / {pw}\n"
+                    f"# {vendor} remote support login" + (f" ({engineer['name']})" if storyline == "vendor" else "") + f": {u} / {pw}\n"
                     f"# for the internal servers, ask {person} for the {jump} RDP file\n")
         files.append(name)
         add(name, "openvpn", u, "jump host or vendor laptop share", [rdp_name], port=port,
@@ -427,9 +430,11 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
                 f"  {web}/vendor\n  user: {eu}\n  pass: {epw}\n\n"
                 f"Their VPN profile is on the jump host ({vpn_names[0]}). Everything else is in {sheet_name} on the share; "
                 f"the {jump} RDP file is on my desktop, {manager['first']} knows.\n")
+    msg_id = f"<{_rng.randint(10**17, 10**18 - 1)}.{_rng.randint(1000, 9999)}@{domain}>"
     with open(os.path.join(out_dir, eml_name), "w", newline="\r\n") as f:
         f.write(f"From: {mail(lead)}\nTo: {to}\n{cc}"
-                f"Subject: Re: {vendor} remote access\nDate: {sent}\n\n" + body
+                f"Subject: Re: {vendor} remote access\nDate: {sent}\nMessage-ID: {msg_id}\n"
+                "MIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n" + body
                 + (f"Old backups are still on \\\\{dns_label}.{dns_zone}\\backup if you need them.\n" if dns_label else "") + "\n"
                 f"Regards,\n{lead['first']}\n{p['dept']}\n")
     files.append(eml_name)
@@ -449,10 +454,15 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     bm_name = "bookmarks.html"
     links = [(f"{title} (admin)", f"{web}{path}") for title, path, _ in p["systems"]]
     links.insert(1, ("Admin console (do not share)", f"{web}/go/{bm_label}"))
+    added = int((when - timedelta(days=_rng.randint(30, 300))).timestamp())
     with open(os.path.join(out_dir, bm_name), "w") as f:
-        f.write("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"
-                "<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n    <DT><H3>IT</H3>\n    <DL><p>\n"
-                + "".join(f'        <DT><A HREF="{u}">{escape(n)}</A>\n' for n, u in links)
+        f.write("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<!-- This is an automatically generated file.\n"
+                "     It will be read and overwritten.\n     DO NOT EDIT! -->\n"
+                "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"
+                "<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n"
+                f"    <DT><H3 ADD_DATE=\"{added}\" LAST_MODIFIED=\"{int(when.timestamp())}\">IT</H3>\n    <DL><p>\n"
+                + "".join(f'        <DT><A HREF="{u}" ADD_DATE="{added + i * _rng.randint(3600, 864000)}">{escape(n)}</A>\n'
+                          for i, (n, u) in enumerate(links))
                 + "    </DL><p>\n</DL><p>\n")
     files.append(bm_name)
     add(bm_name, "http", "~" + bm_label, "an admin's browser profile or Documents folder", path_token=bm_label)

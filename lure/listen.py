@@ -298,8 +298,11 @@ class Alerter:
         if self.syslog:
             host, _, port = self.syslog.partition(":")
             msg = f"<10>lure: {json.dumps(chain_event(ev)) if self.fmt == 'chain' else line}".encode()
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.sendto(msg, (host, int(port or 514)))
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.sendto(msg, (host, int(port or 514)))
+            except (OSError, ValueError) as e:
+                self.out(json.dumps({"error": f"syslog failed: {e}"}))
 
 
 MAX_CONNECTIONS = 512
@@ -343,7 +346,7 @@ async def _serve(alerter, service, port, parser, reply):
 WARNING_BODY = (b"<html><body><h1>Authorised personnel only</h1>"
                 b"<p>This system is restricted. Access attempts are logged. If you are not authorised, "
                 b"do not continue. Re-enter your credentials to confirm you are authorised.</p></body></html>")
-HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"SCADA - authorised personnel "
+HTTP_401 = (b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Restricted system - authorised personnel "
             b"only, access is logged. Re-enter credentials to confirm\"\r\nContent-Type: text/html\r\n"
             b"Content-Length: " + str(len(WARNING_BODY)).encode() + b"\r\nConnection: close\r\n\r\n" + WARNING_BODY)
 

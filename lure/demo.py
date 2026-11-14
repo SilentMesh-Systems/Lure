@@ -7,7 +7,6 @@ the baits and tries them one by one. Nothing leaves the machine.
 
 import asyncio
 import base64
-import json
 import os
 import socket
 import tempfile
@@ -59,9 +58,10 @@ def _attack(manifest, http, rdp):
     except Exception:
         pass
     _say(f"[attacker] Double-clicks {rdp_bait['file']} and tries Remote Desktop as {rdp_bait['username']}")
+    body = b"\xe0\x00\x00\x00\x00\x00Cookie: mstshash=" + rdp_bait["username"].encode() + b"\r\n\x01\x00\x08\x00\x03\x00\x00\x00"
+    x224 = bytes([len(body)]) + body
     with socket.create_connection(("127.0.0.1", rdp), timeout=3) as s:
-        s.sendall(b"\x03\x00\x00\x2f\x2a\xe0\x00\x00\x00\x00\x00Cookie: mstshash="
-                  + rdp_bait["username"].encode() + b"\r\n\x01\x00\x08\x00\x03\x00\x00\x00")
+        s.sendall(b"\x03\x00" + (4 + len(x224)).to_bytes(2, "big") + x224)
     time.sleep(1)
 
 
@@ -103,7 +103,7 @@ def demo(open_browser=True, keep=False):
     print("\nWhat Lure saw:")
     print(f"  {len([a for a in state['alerts'] if a['severity'] == 'high'])} high alerts, attacker path: "
           + " -> ".join(s["file"] for s in path))
-    print(f"\nOpening, copying or scanning the files never fired anything. Only using a credential did.")
+    print("\nOpening, copying or scanning the files never fired anything. Only using a credential did.")
     if keep:
         print(f"Dashboard stays up at {url}. Press Ctrl+C to stop.")
         try:

@@ -4,7 +4,7 @@ import json
 import sys
 
 from . import __version__
-from .generate import PROFILES, STORYLINES, generate, record, rotate
+from .generate import STORYLINES, generate, record, rotate
 from .listen import Alerter, run
 
 

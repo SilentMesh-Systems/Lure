@@ -150,6 +150,49 @@ class GenerateTest(unittest.TestCase):
             touch = Alerter(m, out=[].append).event("http", "10.9.9.9", 2, "nobody", now=0)
             self.assertIsNone(touch["actor"])
 
+    def test_storyline_reaches_cli_and_mcp(self):
+        import subprocess
+        import sys
+        from lure.mcp import Server
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run([sys.executable, "-m", "lure", "generate", "--listener", "10.0.5.20",
+                                "--out", os.path.join(d, "cli"), "--storyline", "admin"],
+                               capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("storyline: admin.", r.stdout)
+            with open(os.path.join(d, "cli", "manifest.json")) as f:
+                self.assertEqual(json.load(f)["storyline"]["name"], "admin")
+            srv = Server(os.path.join(d, "mcp", "manifest.json"))
+            os.makedirs(os.path.join(d, "mcp"))
+            out = srv.lure_generate("10.0.5.20", storyline="vendor")
+            self.assertEqual(out["storyline"]["name"], "vendor")
+            self.assertEqual(srv.lure_status()["storyline"], "vendor")
+            self.assertTrue(all(b.get("actor") for b in srv.lure_baits()["baits"]))
+            rot = srv.lure_rotate(storyline="admin")
+            self.assertEqual(srv.lure_status()["storyline"], "admin")
+            self.assertTrue(rot["fresh"])
+
+    def test_bait_files_carry_no_generation_time(self):
+        """Inside the workbook the zip entries are dated like the document; the
+        email and bookmarks carry the headers real exports have."""
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.5.20", d)
+            sheet = next(b["file"] for b in m["baits"] if b["file"].endswith(".xlsx"))
+            with zipfile.ZipFile(os.path.join(d, sheet)) as z:
+                years = {i.date_time[0] for i in z.infolist()}
+                core = z.read("docProps/core.xml").decode()
+                self.assertEqual(len(years), 1)
+                self.assertIn(f"<dcterms:modified xsi:type=\"dcterms:W3CDTF\">{years.pop()}-", core)
+            eml = next(b["file"] for b in m["baits"] if b["file"].endswith(".eml"))
+            with open(os.path.join(d, eml)) as f:
+                text = f.read()
+            self.assertIn("Message-ID: <", text)
+            self.assertIn("MIME-Version: 1.0", text)
+            with open(os.path.join(d, "bookmarks.html")) as f:
+                bm = f.read()
+            self.assertIn("automatically generated file", bm)
+            self.assertIn('ADD_DATE="', bm)
+
     def test_rotate_keeps_old_baits_alerting(self):
         from lure.generate import rotate
         with tempfile.TemporaryDirectory() as d:
@@ -550,7 +593,6 @@ class McpTest(unittest.TestCase):
                 self.assertEqual(r["result"], {})
 
     def test_alerts_and_acknowledge(self):
-        import io
         from lure.mcp import Server
         with tempfile.TemporaryDirectory() as d:
             m = generate("10.0.5.20", d)

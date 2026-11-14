@@ -118,7 +118,8 @@ class Server:
                 ip = a["source"].rsplit(":", 1)[0]
                 if not paths.get(ip) or paths[ip][-1] != a["bait_file"]:
                     paths.setdefault(ip, []).append(a["bait_file"])
-        return {"profile": m.get("profile"), "listener": m.get("listener"), "live_baits": len(live),
+        return {"profile": m.get("profile"), "storyline": (m.get("storyline") or {}).get("name"),
+                "listener": m.get("listener"), "live_baits": len(live),
                 "retired_baits": len(m.get("baits", [])) - len(live),
                 "triggered_baits": sorted({b["file"] for b in m.get("baits", []) if b["username"] in fired}),
                 "open_alerts": sum(1 for a in alerts if not a.get("acknowledged")),

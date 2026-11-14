@@ -62,7 +62,7 @@ def init(out_dir="baits", listener=None, profile="it", out=print, storyline=None
         out("note: no network address found, so these baits point at this machine only. Re-run with --listener <this machine's LAN IP> to catch use from other machines.")
     out(f"  1. Start the listener here, in this terminal:   {c} listen --manifest {manifest} --ui")
     out(f"  2. Prove it, from another terminal:             {c} test --manifest {manifest}")
-    out(f"  3. Copy a bait or two to a machine an intruder would reach (a desktop, a share), then tell Lure where:")
+    out("  3. Copy a bait or two to a machine an intruder would reach (a desktop, a share), then tell Lure where:")
     example = next((f for f in files if f.endswith(".rdp")), files[0])
     out(f"     {c} record \"{example}\" \"HOSTNAME:C:\\Users\\someone\\Desktop\"")
     out("")

@@ -180,6 +180,8 @@ def main():
                           desktop=a.desktop or bool(cfg.get("desktop")), email=email)
         ports = manifest.get("ports") or {}
         a.rdp, a.http = a.rdp or ports.get("rdp", 3389), a.http or ports.get("http", 8080)
+        vpn_list = sorted({b["port"] for b in manifest.get("baits", []) if b.get("service") == "openvpn" and b.get("port")} or {a.openvpn})
+        alerter.listen_info["ports"] = {"rdp": a.rdp, "http": a.http, "openvpn": vpn_list}
         told = [n for n, on in (("dashboard", a.ui), ("popup", alerter.desktop), ("email " + (email or {}).get("to", ""), email),
                                 ("webhook", alerter.webhook), ("syslog", a.syslog)) if on]
         print("alerts go to: " + (", ".join(told) or "this terminal only (add --desktop, --email-to or --webhook)"), flush=True)

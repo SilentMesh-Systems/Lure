@@ -802,7 +802,7 @@ class ConsoleTest(unittest.TestCase):
                 self.assertEqual(post(f"http://127.0.0.1:{port}"), 200)
                 self.assertTrue(fired.wait(3))
                 page = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3).read().decode()
-                self.assertIn("Test now", page)
-                self.assertIn("Alert channels", page)
+                self.assertIn("Run test", page)
+                self.assertIn("Live alert feed", page)
             finally:
                 srv.shutdown()

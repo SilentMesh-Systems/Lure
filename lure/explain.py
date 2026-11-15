@@ -74,6 +74,24 @@ def _next(ev, ip):
     return steps
 
 
+def attack(ev):
+    """The MITRE ATT&CK technique the attempt shows, as (id, name)."""
+    s, f = ev.get("service", ""), (ev.get("bait_file") or "").lower()
+    if ev.get("severity") != "high":
+        return ("T1046", "Network Service Discovery")
+    if s == "rdp":
+        return ("T1021.001", "Remote Desktop Protocol")
+    if s == "openvpn":
+        return ("T1133", "External Remote Services")
+    if s == "aws":
+        return ("T1078.004", "Valid Accounts: Cloud Accounts")
+    if s.startswith("log:"):
+        return ("T1078", "Valid Accounts")
+    if f.endswith(".csv") or f == "bookmarks.html":
+        return ("T1555.003", "Credentials from Web Browsers")
+    return ("T1552.001", "Unsecured Credentials: Credentials In Files")
+
+
 def explain(ev):
     ip = (ev.get("source") or "?").rsplit(":", 1)[0]
     where = ev.get("location") or ev.get("planted_on")
@@ -81,4 +99,5 @@ def explain(ev):
         what = f"The bait {ev.get('bait_file')}" + (f", planted in {where}." if where else ".")
     else:
         what = "No bait was used; only the listener was touched."
-    return {"who": _who(ip), "what": what, "how": _how(ev), "next": _next(ev, ip)}
+    tid, tname = attack(ev)
+    return {"who": _who(ip), "what": what, "how": _how(ev), "next": _next(ev, ip), "attack": tid, "attack_name": tname}

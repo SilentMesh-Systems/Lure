@@ -75,6 +75,7 @@ def demo(open_browser=True, keep=False):
         print(f"  {f}")
     alerter = Alerter(m, out=lambda line: print("  DEMO ALERT " + line, flush=True),
                       log=os.path.join(d, "alerts.jsonl"), demo=True)
+    alerter.listen_info["ports"] = {"rdp": rdp, "http": http, "openvpn": [vpn]}
     serve(alerter, "127.0.0.1", ui_port)
     url = f"http://127.0.0.1:{ui_port}/"
     print(f"\nDashboard: {url}")

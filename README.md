@@ -193,7 +193,7 @@ Every alert says, in plain words, **who** (this computer, a device on your netwo
 python3 -m lure listen --manifest baits/manifest.json --ui
 ```
 
-Then open http://127.0.0.1:8765 on the listener host. It is a small console. Overview shows whether you are protected, open incidents, bait use over 14 days and where alerts reach you. Incidents groups everything one source did into one incident, with a timeline, a what-to-do checklist and Mark as handled. Baits lists each file, where it belongs and whether it was used. Test now fires a real bait login at your own listener so you can watch an alert arrive. The `lure demo` dashboard carries a DEMO banner so it can never be mistaken for a real attack. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
+Then open http://127.0.0.1:8765 on the listener host. It is an operator console: health of the listener, bait set, alert delivery and software at the top; a live alert feed with the MITRE ATT&CK technique for each attempt; incidents grouped per source with the attack chain and a response checklist; the bait inventory; and integrations. Run test fires a real bait login at your own listener and times the alert. Export gives every alert as CSV or JSON. The `lure demo` dashboard carries a DEMO banner so it can never be mistaken for a real attack. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
 
 ## Use it from an AI agent (MCP)
 

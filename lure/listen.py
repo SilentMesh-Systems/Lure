@@ -109,7 +109,8 @@ def _incidents(alerts):
         out.append({
             "source": ip, "who": last["explain"]["who"], "from": short_who(ip), "baits": len({e["bait_file"] for e in highs}),
             "first": evs[0]["time"], "last": evs[-1]["time"], "severity": "high" if highs else "medium",
-            "steps": [{"time": e["time"], "how": e["explain"]["how"]} for e in evs],
+            "steps": [{"time": e["time"], "how": e["explain"]["how"], "service": e.get("service"),
+                       "attack": e["explain"].get("attack"), "bait": e.get("bait_file")} for e in evs],
             "next": last["explain"]["next"], "ids": [e["id"] for e in evs],
             "handled": all(e.get("acknowledged") for e in evs), "demo": any(e.get("demo") for e in evs)})
     open_ = sorted([i for i in out if not i["handled"]], key=lambda i: i["last"], reverse=True)
@@ -161,6 +162,7 @@ class Alerter:
         self.update_available = None
         self.started = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.syslog_on = bool(syslog)
+        self.listen_info = {"listener": manifest.get("listener"), "ports": {}}
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
@@ -271,7 +273,7 @@ class Alerter:
                 if not paths.get(ip) or paths[ip][-1]["file"] != step["file"]:
                     paths.setdefault(ip, []).append(step)
         return {"baits": baits, "alerts": alerts, "paths": paths, "demo": self.demo, "update": self.update_available,
-                "incidents": _incidents(alerts), "files": _files(baits), "since": self.started,
+                "incidents": _incidents(alerts), "files": _files(baits), "since": self.started, "listening": self.listen_info, "profile": self.manifest.get("profile"),
                 "channels": {"desktop": bool(self.desktop), "email": (self.email or {}).get("to"),
                              "webhook": _channel_name(self.webhook), "syslog": self.syslog_on}}
 

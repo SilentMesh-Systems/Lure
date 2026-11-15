@@ -32,7 +32,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 ## Get started in three commands
 
-Install it with `pip install silentmesh-lure` (or `pipx install silentmesh-lure`), then use `lure` in place of `python3 -m lure`. Without installing, run it from the cloned folder.
+Install it with `pip install silentmesh-lure` (or `pipx install silentmesh-lure`), then use `lure` in place of `python3 -m lure`. Without installing, run it from the cloned folder. **On Windows**, type `py -m lure` wherever this page says `python3 -m lure`.
 
 ```
 python3 -m lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)
@@ -42,7 +42,7 @@ python3 -m lure listen --ui   # 3. wait for someone to use one; dashboard at htt
 
 Then, from another terminal or machine: `python3 -m lure test`. It plays an attacker with one bait and shows you the alert. That is a working install. Copy a bait file or two somewhere an intruder would look (a desktop, a file share) and tell Lure where with `lure record`.
 
-Running `python3 -m lure` with no arguments prints this guide.
+`init` asks two things: is this a home or a work computer (home gets a plain password note and a Wi-Fi QR, work gets the office set), and how you want to be told about an alert. Running `python3 -m lure` with no arguments prints this guide.
 
 ## Use cases
 
@@ -79,15 +79,15 @@ Not covered yet: Azure bait keys, a hosted demo listener, and macOS. AWS bait ke
    |---|---|---|
    | A spreadsheet such as `passwords_FINAL_v2.xlsx` | A real workbook from "IT Support", months old, with a Notes column, a "temporary" shared admin row ("TODO: rotate after the audit") and an "Old - do not use" sheet | A file share or a Documents folder |
    | `DO NOT DELETE - JUMP-SRV-01.rdp` | A saved Remote Desktop connection with a username filled in | An admin or engineering workstation desktop |
-   | `Infosys support VPN (old).ovpn` | A vendor VPN profile with its login in a comment, and a hint about the RDP file | A jump host or vendor laptop share |
+   | `AMC vendor support VPN (old).ovpn` | A vendor VPN profile with its login in a comment, and a hint about the RDP file | A jump host or vendor laptop share |
    | `passwords.csv` | A browser password export | A Downloads folder |
    | `.git-credentials` | A git credential store; real `git` will send this login | A home directory |
-   | `Re- Infosys remote access.eml` | An email that leaks a temporary login and points at the VPN profile and the spreadsheet | A mailbox export or Documents folder |
+   | `Re- AMC vendor remote access.eml` | An email that leaks a temporary login and points at the VPN profile and the spreadsheet | A mailbox export or Documents folder |
    | A QR notice such as `IT helpdesk - scan to set up VPN.png` | A QR code that opens a URL with a hidden token. Scanning it raises an alert | A notice board, a printed poster, or a shared Pictures folder |
    | `bookmarks.html` | An exported browser favourites file with admin consoles in it, one carrying a token | An admin's browser profile or Documents folder |
    | `manifest.json` | Which username belongs to which bait (no passwords). **Keep it off the network.** | Only on the listener host |
 
-   Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_vcenter2`, `vendor.infosys`), never random strings, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
+   Names, vendors and dates change on every run. Usernames look like real accounts (`r.patil_adm`, `svc_vcenter2`, `amc.support`), never random strings. Vendors are roles ("AMC vendor", "automation vendor"), never real company names, and the files are backdated weeks or months. The baits point at each other, so each one found makes the next more convincing.
 
    Pick vocabulary that fits the place with `--profile it` (default: NAS, vCenter, intranet), `office` (payroll, Tally, HR), `home` (router, NAS, CCTV, for a Raspberry Pi at home), `bank` (core banking, payment switch), `hospital` (HIS, PACS, lab) or `plant` (SCADA, historian, MES). Or bring your own: copy `profiles/legal.json` (also `education.json`, `retail.json`), change the systems, vendors and wording, and pass the file with `--profile my-org.json`. Pull requests with new profiles are welcome.
 
@@ -170,9 +170,22 @@ python3 -m lure aws watch  --manifest baits/manifest.json --aws-profile my-admin
 
 Status: request signing is verified against AWS's published Signature Version 4 example; the full create-and-watch loop has not yet been run against a live account. Treat it as a preview.
 
-## Alerts where you already look
+## Being told about an alert
 
-`--webhook` formats each alert for the platform automatically: Slack (blocks), Microsoft Teams (cards), Discord and Telegram. Any other URL receives the plain JSON alert.
+Every alert says, in plain words, **who** (this computer, a device on your network, or an address on the internet), **what** bait, **how** it was used, and **what to do next**. Pick any mix:
+
+| You have | Use |
+|---|---|
+| Nothing set up | `--desktop`: a popup on this computer (Windows, Linux, macOS) |
+| A phone | the free ntfy app: subscribe to a topic name nobody would guess, then `--webhook https://ntfy.sh/<topic>`. A Telegram bot URL or a Discord webhook works too |
+| Gmail or Outlook | `--email-to you@gmail.com` with an app password in `LURE_SMTP_PASSWORD` (never saved) |
+| Slack, Teams, a SIEM | `--webhook URL` (Slack blocks, Teams cards, plain JSON for anything else) or `--syslog HOST` |
+
+`lure init` asks which one you want and saves the answer in your own config folder (`%APPDATA%\lure` or `~/.config/lure`), never next to the baits.
+
+## Updates: nothing installs without you
+
+`lure listen` asks PyPI once a day whether a newer Lure exists and, if so, says so in the terminal and on the dashboard. It never installs anything. Run `lure update` to read what changed and type `yes` to install that exact version. The check sends nothing but a normal request to pypi.org; turn it off with `--no-update-check` or `LURE_NO_UPDATE_CHECK=1`. On our side, a release reaches PyPI only after the tests pass on Linux and Windows and a maintainer approves it.
 
 ## Local dashboard
 
@@ -180,7 +193,7 @@ Status: request signing is verified against AWS's published Signature Version 4 
 python3 -m lure listen --manifest baits/manifest.json --ui
 ```
 
-Then open http://127.0.0.1:8765 on the listener host. It shows every bait (quiet or triggered, and where it is planted) and a live alert feed with a "Mark investigated" button. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
+Then open http://127.0.0.1:8765 on the listener host. It is a small console. Overview shows whether you are protected, open incidents, bait use over 14 days and where alerts reach you. Incidents groups everything one source did into one incident, with a timeline, a what-to-do checklist and Mark as handled. Baits lists each file, where it belongs and whether it was used. Test now fires a real bait login at your own listener so you can watch an alert arrive. The `lure demo` dashboard carries a DEMO banner so it can never be mistaken for a real attack. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
 
 ## Use it from an AI agent (MCP)
 

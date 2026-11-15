@@ -35,7 +35,7 @@ PROFILES = {
     "it": {
         "systems": [("NAS admin", "/nas", "nas.admin"), ("vCenter (read-only)", "/vcenter", "svc_vcenter"),
                     ("Intranet admin", "/intranet", "intranet.adm")],
-        "jump": "JUMP-SRV-01", "vendors": ["Infosys", "TCS", "Wipro", "Accenture"],
+        "jump": "JUMP-SRV-01", "vendors": ["AMC vendor", "Helpdesk partner", "Network vendor", "Managed IT partner"],
         "words": ["Welcome", "Summer", "Monsoon", "Company", "Admin", "Diwali"],
         "sheet": ["passwords_FINAL_v2.xlsx", "IT logins - keep safe.xlsx", "admin_accounts_2025.xlsx"],
         "event": "the audit", "dept": "IT Support",
@@ -43,15 +43,17 @@ PROFILES = {
     "home": {
         "systems": [("Router admin", "/router", "admin.router"), ("NAS / photo backup", "/nas", "family.nas"),
                     ("CCTV recorder", "/cctv", "cctv.view")],
-        "jump": "HOME-PC", "vendors": ["Airtel", "Jio", "ACT", "Excitel"],
+        "jump": "HOME-PC", "vendors": ["Office", "Work", "College"], "vpn_label": "{vendor} VPN",
         "words": ["Family", "Home", "Sunshine", "Cricket", "Diwali", "Monsoon"],
-        "sheet": ["my passwords.xlsx", "passwords (keep safe).xlsx", "home logins 2025.xlsx"],
+        "sheet": ["passwords.txt", "my passwords.txt", "important logins.txt"],
+        "shared_title": "Wifi admin (new router)", "rdp_title": "Remote desktop to {jump}",
+        "qr_names": ["home wifi QR (print).png", "wifi password QR.png", "router setup QR.png"],
         "event": "the router change", "dept": "Home",
     },
     "plant": {
         "systems": [("SCADA web (read-only)", "/scada", "scada_ro"), ("Historian", "/historian", "svc_historian"),
                     ("MES reports", "/mes", "mes.report")],
-        "jump": "JUMP-OT-01", "vendors": ["Siemens", "ABB", "Honeywell", "Schneider"],
+        "jump": "JUMP-OT-01", "vendors": ["Automation vendor", "SCADA integrator", "DCS vendor", "OEM service"],
         "words": ["Turbine", "Boiler", "Kiln", "Plant", "Grid", "Shutdown"],
         "sheet": ["passwords_FINAL_v2.xlsx", "plant logins (do not share).xlsx", "OT_access_list_2025.xlsx"],
         "event": "the shutdown", "dept": "Plant IT",
@@ -59,7 +61,7 @@ PROFILES = {
     "office": {
         "systems": [("Payroll portal", "/payroll", "payroll.admin"), ("Tally server", "/tally", "tally_svc"),
                     ("HR system", "/hr", "hr.admin")],
-        "jump": "FINANCE-PC-02", "vendors": ["Tally partner", "Zoho", "Freshworks", "HCL"],
+        "jump": "FINANCE-PC-02", "vendors": ["Accounts vendor", "Payroll partner", "AMC vendor", "IT vendor"],
         "words": ["Welcome", "Office", "Summer", "Diwali", "Monsoon", "Finance"],
         "sheet": ["passwords_FINAL_v2.xlsx", "office logins.xlsx", "accounts_2025.xlsx"],
         "event": "year-end closing", "dept": "Admin Office",
@@ -67,7 +69,7 @@ PROFILES = {
     "bank": {
         "systems": [("Core banking (read-only)", "/cbs", "cbs_viewer"), ("Payment switch console", "/switch", "switch.ops"),
                     ("Treasury reports", "/treasury", "treasury_rpt")],
-        "jump": "JUMP-DC-01", "vendors": ["Finacle", "FIS", "Temenos", "NCR"],
+        "jump": "JUMP-DC-01", "vendors": ["Core banking vendor", "Switch vendor", "ATM vendor", "DC vendor"],
         "words": ["Ledger", "Branch", "Treasury", "Vault", "Quarter", "Rupee"],
         "sheet": ["passwords_FINAL_v2.xlsx", "branch IT access.xlsx", "DC_access_list_2025.xlsx"],
         "event": "the RBI audit", "dept": "DC Operations",
@@ -75,7 +77,7 @@ PROFILES = {
     "hospital": {
         "systems": [("HIS admin", "/his", "his.admin"), ("PACS viewer", "/pacs", "pacs_ro"),
                     ("Lab system", "/lis", "lis_svc")],
-        "jump": "JUMP-MED-01", "vendors": ["Philips", "GE Healthcare", "Siemens Healthineers", "Agfa"],
+        "jump": "JUMP-MED-01", "vendors": ["Imaging vendor", "HIS vendor", "Biomedical AMC", "Lab system vendor"],
         "words": ["Ward", "Clinic", "Health", "Doctor", "Night", "Shift"],
         "sheet": ["passwords_FINAL_v2.xlsx", "biomedical logins.xlsx", "HIS_access_2025.xlsx"],
         "event": "the NABH audit", "dept": "Biomedical IT",
@@ -220,6 +222,18 @@ def _xlsx(path, sheets, author, created, modified):
             z.writestr(name, data)
 
 
+def _notes(path, rows, old_rows):
+    """A plain notes file, the way people really keep passwords at home."""
+    out = []
+    for r in rows:
+        out += [r[0], f"  {r[1]}", f"  user: {r[2]}", f"  pass: {r[3]}", ""]
+    if old_rows:
+        out.append("old, probably not working any more:")
+        out += [f"  {r[0]}  {r[2]} / {r[3]}" for r in old_rows]
+    with open(path, "w", newline="\r\n") as f:
+        f.write("\n".join(out) + "\n")
+
+
 def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
              http_port=8080, rdp_port=3389, retired=None, dns_zone=None):
     """Write a convincing bait set into out_dir and return the manifest.
@@ -245,7 +259,8 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
 
     sheet_name = _rng.choice(p["sheet"])
     rdp_name = _rng.choice([f"DO NOT DELETE - {jump}.rdp", f"{jump} (admin).rdp", f"{jump.lower()}.rdp"])
-    vpn_names = [f"{vendor} support VPN{' (old)' if i == 0 else ' ' + str(i + 1)}.ovpn"
+    vpn_label = p.get("vpn_label", "{vendor} support VPN").format(vendor=vendor)
+    vpn_names = [f"{vpn_label}{' (old)' if i == 0 else ' ' + str(i + 1)}.ovpn"
                  for i in range(max(1, vpn_count))]
     csv_name = "passwords.csv"
     eml_name = f"Re- {vendor} remote access.eml"
@@ -290,11 +305,11 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         add(sheet_name, "http", u, f"file share (old sheet, {title})", note="old credentials, still a bait")
     mod = when.strftime("%d-%b")
     rows = [["System", "Address", "Username", "Password", "Notes", "Updated"],
-            [f"{jump} (RDP)", f"{listener}:{rdp_port}", rdp_user, rdp_pw,
+            [p.get("rdp_title", "{jump} (RDP)").format(jump=jump), f"{listener}:{rdp_port}", rdp_user, rdp_pw,
              f"via {jump}, saved RDP on the admin desktop", mod]]
     rows += [r + [_rng.choice(["", "read-only", "ask " + helper + " before changing", "same as last year"]), mod]
              for r in sys_rows]
-    rows.append(["Shared admin (temporary)", f"{web}/admin", shared_user, shared_pw,
+    rows.append([p.get("shared_title", "Shared admin (temporary)"), f"{web}/admin", shared_user, shared_pw,
                  f"TODO: rotate after {p['event']}", mod])
     dns_label = None
     if dns_zone:
@@ -304,9 +319,12 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         add(sheet_name, "dns", du, "file share (backup NAS row)", dns_label=dns_label)
     rows.append([f"{vendor} VPN", f"{listener}:{vpns[0][2]}", vpns[0][0], vpns[0][1],
                  f"vendor only, profile on jump host ({vpn_names[0]})", mod])
-    _xlsx(os.path.join(out_dir, sheet_name),
-          [("Logins", rows), ("Old - do not use", [rows[0]] + old_rows)],
-          author=p["dept"], created=when - timedelta(days=_rng.randint(60, 400)), modified=when)
+    if sheet_name.endswith(".txt"):
+        _notes(os.path.join(out_dir, sheet_name), rows[1:], old_rows)
+    else:
+        _xlsx(os.path.join(out_dir, sheet_name),
+              [("Logins", rows), ("Old - do not use", [rows[0]] + old_rows)],
+              author=p["dept"], created=when - timedelta(days=_rng.randint(60, 400)), modified=when)
     files.append(sheet_name)
 
     # 4. A browser password export, the kind left in Downloads.
@@ -344,7 +362,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     # 7. A QR code on an "IT helpdesk" notice: scanning it opens a URL with a token.
     from .qr import encode, to_png
     qr_label = _rng.choice(["vpn-setup", "wifi-guest", "helpdesk", "mfa-reset"]) + "-" + str(_rng.randint(10, 99))
-    qr_name = _rng.choice(["IT helpdesk - scan to set up VPN.png", "guest wifi QR (print).png", "MFA reset QR - IT.png"])
+    qr_name = _rng.choice(p.get("qr_names") or ["IT helpdesk - scan to set up VPN.png", "guest wifi QR (print).png", "MFA reset QR - IT.png"])
     to_png(encode(f"{web}/q/{qr_label}"), os.path.join(out_dir, qr_name), scale=10)
     files.append(qr_name)
     add(qr_name, "http", "~" + qr_label, "printed on a notice board, or in a shared Pictures folder", path_token=qr_label)
@@ -371,6 +389,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         "site": site,
         "profile": profile,
         "dns_zone": dns_zone,
+        "ports": {"http": http_port, "rdp": rdp_port},
         "baits": baits + [dict(b, retired=True) for b in (retired or [])],
     }
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
@@ -396,6 +415,9 @@ def rotate(manifest_path, out_dir=None, **kwargs):
             os.makedirs(old_dir, exist_ok=True)
             os.replace(src, os.path.join(old_dir, name))
     kwargs.setdefault("dns_zone", old.get("dns_zone"))
+    for k in ("http", "rdp"):
+        if (old.get("ports") or {}).get(k):
+            kwargs.setdefault(f"{k}_port", old["ports"][k])
     return generate(old["listener"], out_dir, site=old.get("site", "site"),
                     profile=kwargs.pop("profile", old.get("profile", "it")), retired=retired, **kwargs)
 

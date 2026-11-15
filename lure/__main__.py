@@ -8,6 +8,15 @@ from .generate import PROFILES, generate, record, rotate
 from .listen import Alerter, run
 
 
+def _ports(manifest_path):
+    try:
+        with open(manifest_path) as f:
+            ports = json.load(f).get("ports") or {}
+    except (OSError, ValueError):
+        ports = {}
+    return {"rdp": ports.get("rdp", 3389), "http": ports.get("http", 8080)}
+
+
 def main():
     p = argparse.ArgumentParser(prog="lure", description="Credential lures for everyone: planted credentials that give the attacker away.")
     p.add_argument("--version", action="version", version=f"lure v{__version__} by SilentMesh")
@@ -16,7 +25,8 @@ def main():
     ini = sub.add_parser("init", help="first install on this machine: write baits pointing here and say what to do next")
     ini.add_argument("--out", default="baits")
     ini.add_argument("--listener", help="use this address instead of this machine's own")
-    ini.add_argument("--profile", default="it", help="it (default), office, home, plant, bank, hospital, or a JSON profile file")
+    ini.add_argument("--profile", help="home, it, office, plant, bank, hospital, or a JSON profile file (asked if not given)")
+    ini.add_argument("--yes", action="store_true", help="ask nothing; use the defaults")
 
     g = sub.add_parser("generate", help="write a set of bait files")
     g.add_argument("--listener", required=True, help="host or IP that runs `lure listen`")
@@ -65,31 +75,38 @@ def main():
     t = sub.add_parser("test", help="fire a real bait login at the listener and confirm the alert arrives")
     t.add_argument("--manifest", default="baits/manifest.json")
     t.add_argument("--listener", help="override the listener host from the manifest")
-    t.add_argument("--rdp", type=int, default=3389)
-    t.add_argument("--http", type=int, default=8080)
+    t.add_argument("--rdp", type=int, help="default: the port written in the manifest, else 3389")
+    t.add_argument("--http", type=int, help="default: the port written in the manifest, else 8080")
+
+    up = sub.add_parser("update", help="see what changed in a newer Lure and install it only if you say yes")
+    up.add_argument("--yes", action="store_true", help="install without asking (for scripts)")
 
     l = sub.add_parser("listen", help="alert when a bait credential is used")
     l.add_argument("--manifest", default="baits/manifest.json")
     l.add_argument("--webhook", help="POST each alert as JSON to this URL")
     l.add_argument("--syslog", help="host[:port] for UDP syslog")
     l.add_argument("--ui", action="store_true", help="serve a local dashboard (default http://127.0.0.1:8765)")
+    l.add_argument("--desktop", action="store_true", help="also show each alert as a popup on this computer")
+    l.add_argument("--email-to", help="also email each alert here, sent from this address (needs LURE_SMTP_PASSWORD, an app password)")
+    l.add_argument("--no-update-check", action="store_true", help="do not ask PyPI once a day whether a newer Lure exists")
     l.add_argument("--ui-host", default="127.0.0.1", help="dashboard address; keep 127.0.0.1 unless you know why")
     l.add_argument("--ui-port", type=int, default=8765)
     l.add_argument("--log", help="append alerts to this JSON-lines file (default: alerts.jsonl next to the manifest)")
     l.add_argument("--dns-port", type=int, default=53, help="UDP port for DNS baits (needs --dns-zone in the manifest)")
     l.add_argument("--watch", nargs="+", metavar="LOGFILE", help="also watch these real auth logs for bait usernames")
-    l.add_argument("--rdp", type=int, default=3389)
-    l.add_argument("--http", type=int, default=8080)
+    l.add_argument("--rdp", type=int, help="default: the port written in the manifest, else 3389")
+    l.add_argument("--http", type=int, help="default: the port written in the manifest, else 8080")
     l.add_argument("--openvpn", type=int, default=1194, help="only used for a manifest without VPN ports; otherwise the ports written into the VPN baits are used")
 
     if len(sys.argv) == 1:
-        from .init import GUIDE
-        print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + GUIDE)
+        from .init import guide
+        print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + guide())
         return
     a = p.parse_args()
     if a.cmd == "init":
         from .init import init
-        if init(a.out, a.listener, a.profile) is None:
+        ask = input if sys.stdin.isatty() and not a.yes else None
+        if init(a.out, a.listener, a.profile, ask=ask) is None:
             raise SystemExit(1)
         return
     if a.cmd == "generate":
@@ -133,9 +150,13 @@ def main():
     elif a.cmd == "mcp":
         from .mcp import serve_stdio
         serve_stdio(a.manifest, a.log)
+    elif a.cmd == "update":
+        from .update import run as update
+        raise SystemExit(update(yes=a.yes))
     elif a.cmd == "test":
         from .selftest import run as selftest
-        if not selftest(a.manifest, a.listener, a.rdp, a.http):
+        ports = _ports(a.manifest)
+        if not selftest(a.manifest, a.listener, a.rdp or ports["rdp"], a.http or ports["http"]):
             raise SystemExit(1)
     elif a.cmd == "record":
         n = record(a.manifest, a.bait, a.location)
@@ -147,10 +168,38 @@ def main():
             manifest = json.load(f)
         import os
         log = a.log or os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
-        alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log, merge_window=8)
+        from .notify import load_config
+        cfg = load_config()
+        email = None
+        if a.email_to:
+            dom = a.email_to.rsplit("@", 1)[-1].lower()
+            email = {"to": a.email_to, "user": a.email_to, "port": 587,
+                     "host": "smtp.office365.com" if dom in ("outlook.com", "hotmail.com", "live.com") else "smtp.gmail.com"}
+        email = email or cfg.get("email")
+        alerter = Alerter(manifest, webhook=a.webhook or cfg.get("webhook"), syslog=a.syslog, log=log, merge_window=8,
+                          desktop=a.desktop or bool(cfg.get("desktop")), email=email)
+        ports = manifest.get("ports") or {}
+        a.rdp, a.http = a.rdp or ports.get("rdp", 3389), a.http or ports.get("http", 8080)
+        told = [n for n, on in (("dashboard", a.ui), ("popup", alerter.desktop), ("email " + (email or {}).get("to", ""), email),
+                                ("webhook", alerter.webhook), ("syslog", a.syslog)) if on]
+        print("alerts go to: " + (", ".join(told) or "this terminal only (add --desktop, --email-to or --webhook)"), flush=True)
+        if email and not __import__("os").environ.get("LURE_SMTP_PASSWORD"):
+            print("warning: email alerts need LURE_SMTP_PASSWORD (an app password); none is set, so email will fail", flush=True)
+        if not a.no_update_check:
+            import threading
+            from .update import check
+
+            def _check():
+                newer = check()
+                if newer:
+                    alerter.update_available = newer
+                    print(f"Lure {newer} is available. Nothing is installed without you: run `lure update` to review it.", flush=True)
+            threading.Thread(target=_check, daemon=True).start()
         if a.ui:
             from .ui import serve
-            serve(alerter, a.ui_host, a.ui_port)
+            from .selftest import run as selftest
+            serve(alerter, a.ui_host, a.ui_port,
+                  tester=lambda: selftest(a.manifest, "127.0.0.1", a.rdp, a.http, out=lambda line: None))
             print(f"dashboard: http://{a.ui_host}:{a.ui_port}/", flush=True)
         vpn_ports = [b["port"] for b in manifest.get("baits", []) if b.get("service") == "openvpn" and b.get("port")]
         ports = ", ".join(str(p) for p in sorted(set(vpn_ports or [a.openvpn])))

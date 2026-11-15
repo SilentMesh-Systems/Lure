@@ -579,3 +579,230 @@ class InitTest(unittest.TestCase):
             self.assertIn("lure listen", out.getvalue())
             self.assertIn("lure test", out.getvalue())
             self.assertIsNone(init(os.path.join(d, "baits"), listener="10.0.0.9", out=lambda s: None))
+
+
+class FounderFixesTest(unittest.TestCase):
+    """15 Nov 2026: demo alerts looked real, alerts did not say who or how, real brand names in baits."""
+
+    def _alerter(self, d, **kw):
+        m = generate("127.0.0.1", d)
+        return m, Alerter(m, out=lambda l: None, log=os.path.join(d, "alerts.jsonl"), **kw)
+
+    def test_every_alert_says_who_what_how_next(self):
+        with tempfile.TemporaryDirectory() as d:
+            m, a = self._alerter(d)
+            rdp = next(b for b in m["baits"] if b["service"] == "rdp")
+            ev = a.event("rdp", "192.168.1.40", 5000, rdp["username"])
+            x = ev["explain"]
+            self.assertIn("192.168.1.40", x["who"])
+            self.assertIn("own network", x["who"])
+            self.assertIn(rdp["file"], x["what"])
+            self.assertIn("Remote Desktop", x["how"])
+            self.assertTrue(x["next"])
+            self.assertIn("this computer", a.event("http", "127.0.0.1", 1, None)["explain"]["who"].lower())
+
+    def test_demo_alerts_are_marked_and_say_nothing_real_happened(self):
+        with tempfile.TemporaryDirectory() as d:
+            m, a = self._alerter(d, demo=True)
+            ev = a.event("rdp", "127.0.0.1", 1, m["baits"][0]["username"])
+            self.assertTrue(ev["demo"])
+            self.assertIn("demo", ev["explain"]["next"][0].lower())
+            st = a.state()
+            self.assertTrue(st["demo"])
+            self.assertTrue(st["incidents"][0]["demo"])
+
+    def test_one_incident_per_source_and_one_click_handles_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            m, a = self._alerter(d)
+            users = [b["username"] for b in m["baits"] if b["service"] == "http" and not b["username"].startswith("~")]
+            for i, u in enumerate(users[:3]):
+                a.event("http", "10.0.0.7", 100 + i, u)
+            a.event("http", "10.0.0.8", 1, users[3])
+            inc = a.state()["incidents"]
+            self.assertEqual(len(inc), 2)
+            big = next(i for i in inc if i["source"] == "10.0.0.7")
+            self.assertEqual(len(big["steps"]), 3)
+            self.assertTrue(a.acknowledge(big["ids"]))
+            inc = a.state()["incidents"]
+            self.assertFalse(inc[0]["handled"])
+            self.assertTrue(next(i for i in inc if i["source"] == "10.0.0.7")["handled"])
+
+    def test_bait_files_are_grouped(self):
+        with tempfile.TemporaryDirectory() as d:
+            m, a = self._alerter(d)
+            files = a.state()["files"]
+            self.assertEqual(len(files), len({b["file"] for b in m["baits"]}))
+            sheet = next(f for f in files if f["file"].endswith(".xlsx"))
+            self.assertGreater(sheet["logins"], 1)
+
+    def test_no_real_company_names_in_any_profile(self):
+        import glob
+        from lure.generate import PROFILES
+        brands = ["infosys", "tcs", "wipro", "accenture", "airtel", "jio", "siemens", "abb", "honeywell", "schneider",
+                  "zoho", "freshworks", "hcl", "finacle", "fis", "temenos", "ncr", "philips", "ge healthcare", "agfa",
+                  "lexisnexis", "pine labs", "shopify", "fedena", "manupatra", "scc online", "tata"]
+        vendors = [v for p in PROFILES.values() for v in p["vendors"]]
+        for f in glob.glob(os.path.join(os.path.dirname(__file__), "..", "profiles", "*.json")):
+            with open(f) as fh:
+                vendors += json.load(fh)["vendors"]
+        for v in vendors:
+            self.assertNotIn(v.lower().split()[0], brands, v)
+            self.assertNotIn(v.lower(), brands, v)
+
+    def test_home_profile_writes_a_plain_notes_file_not_a_spreadsheet(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("192.168.1.2", d, profile="home")
+            files = {b["file"] for b in m["baits"]}
+            self.assertFalse(any(f.endswith(".xlsx") for f in files))
+            note = next(f for f in files if f.endswith(".txt"))
+            with open(os.path.join(d, note)) as fh:
+                text = fh.read()
+            for b in m["baits"]:
+                if b["file"] == note and not b.get("dns_label"):
+                    self.assertIn(b["username"], text)
+
+    def test_rotate_keeps_custom_ports(self):
+        from lure.generate import rotate
+        with tempfile.TemporaryDirectory() as d:
+            generate("10.0.0.2", d, rdp_port=13389, http_port=8081)
+            m = rotate(os.path.join(d, "manifest.json"))
+            self.assertEqual(m["ports"], {"http": 8081, "rdp": 13389})
+
+    def test_ntfy_gets_a_readable_message(self):
+        from lure.listen import _ntfy, webhook_payload
+        ev = {"severity": "high", "bait_file": "a.rdp", "source": "10.0.0.9:5", "service": "rdp", "username": "u", "time": "t"}
+        self.assertEqual(_ntfy("https://ntfy.sh/my-secret-topic"), ("https://ntfy.sh/", "my-secret-topic"))
+        body = webhook_payload("https://ntfy.sh/my-secret-topic", ev)
+        self.assertEqual(body["topic"], "my-secret-topic")
+        self.assertIn("Who:", body["message"])
+        self.assertIsNone(_ntfy("https://example.com/hook"))
+
+    def test_desktop_popup_command_per_platform(self):
+        from unittest import mock
+        from lure import notify
+        seen = []
+        for plat in ("win32", "darwin", "linux"):
+            with mock.patch.object(notify.sys, "platform", plat), mock.patch.object(notify.shutil, "which", return_value="/usr/bin/notify-send"):
+                self.assertTrue(notify.desktop("Lure: Bait used", "It's from 10.0.0.9", run=lambda c, **k: seen.append(c)))
+        self.assertEqual(seen[0][0], "powershell")
+        self.assertIn("It''s from", seen[0][-1])
+        self.assertEqual(seen[1][0], "osascript")
+        self.assertEqual(seen[2][0], "notify-send")
+
+    def test_email_needs_app_password_and_sends(self):
+        from unittest import mock
+        from lure import notify
+        cfg = {"to": "me@gmail.com", "user": "me@gmail.com", "host": "smtp.gmail.com", "port": 587}
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(OSError):
+                notify.email(cfg, "s", "b")
+        sent = []
+
+        class FakeSMTP:
+            def __init__(self, *a, **k): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def starttls(self): pass
+            def login(self, u, p): sent.append(("login", u, p))
+            def send_message(self, m): sent.append(("msg", m["To"], m["Subject"]))
+        with mock.patch.dict(os.environ, {"LURE_SMTP_PASSWORD": "app-pw"}):
+            notify.email(cfg, "Lure alert", "body", smtp=FakeSMTP)
+        self.assertEqual(sent, [("login", "me@gmail.com", "app-pw"), ("msg", "me@gmail.com", "Lure alert")])
+
+    def test_notify_config_lives_outside_the_bait_folder(self):
+        from lure import notify
+        with tempfile.TemporaryDirectory() as d:
+            p = notify.save_config({"desktop": True}, os.path.join(d, "cfg", "notify.json"))
+            self.assertEqual(notify.load_config(p), {"desktop": True})
+        self.assertNotIn("baits", notify.config_path())
+
+    def test_init_asks_home_or_work_and_how_to_be_told(self):
+        from lure.init import init
+        answers = iter(["home", "2"])
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "notify.json")
+            m = init(os.path.join(d, "baits"), listener="10.0.0.9", out=lambda s: None,
+                     ask=lambda q: next(answers), notify_path=cfg)
+            self.assertEqual(m["profile"], "home")
+            with open(cfg) as f:
+                self.assertEqual(json.load(f), {"desktop": True})
+
+
+class UpdateTest(unittest.TestCase):
+    def test_version_order(self):
+        from lure.update import parse
+        order = ["0.1.0a1", "0.1.0b2", "0.1.0b3", "0.1.0rc1", "0.1.0", "0.1.1", "0.2.0"]
+        self.assertEqual(sorted(order, key=parse), order)
+        self.assertIsNone(parse("not-a-version"))
+
+    def test_offers_only_newer_and_respects_prerelease_choice(self):
+        from lure.update import newest
+        rel = {"0.1.0b2": [{}], "0.1.0b3": [{}], "0.1.0b4": [{"yanked": True}], "0.0.9": [{}]}
+        self.assertEqual(newest(rel, "0.1.0b2"), "0.1.0b3")
+        self.assertIsNone(newest(rel, "0.1.0b3"))
+        self.assertIsNone(newest({"0.2.0b1": [{}]}, "0.1.0"))
+        self.assertEqual(newest({"0.2.0": [{}]}, "0.1.0"), "0.2.0")
+
+    def test_nothing_installs_without_yes(self):
+        from lure import update
+        data = {"releases": {"9.9.9": [{}]}}
+        installs = []
+        out = []
+        fetch = lambda url: data if "pypi" in url else {"body": "Fixed the dashboard."}
+        code = update.run(ask=lambda q: "no", out=out.append, fetch=fetch, install=lambda c: installs.append(c) or 0)
+        self.assertEqual(code, 0)
+        self.assertEqual(installs, [])
+        self.assertIn("Fixed the dashboard.", "\n".join(out))
+
+    def test_yes_installs_the_exact_version(self):
+        from unittest import mock
+        from lure import update
+        installs = []
+        fetch = lambda url: {"releases": {"9.9.9": [{}]}} if "pypi" in url else {"body": "x"}
+        with mock.patch.object(update, "__file__", "/usr/lib/python3/site-packages/lure/update.py"):
+            update.run(ask=lambda q: "yes", out=lambda s: None, fetch=fetch, install=lambda c: installs.append(c) or 0)
+        self.assertEqual(installs[0][-1], "silentmesh-lure==9.9.9")
+
+    def test_daily_check_is_cached_and_can_be_turned_off(self):
+        from unittest import mock
+        from lure import update
+        calls = []
+        fetch = lambda url: calls.append(url) or {"releases": {"9.9.9": [{}]}}
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "u.json")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(update.check(fetch, now=1000, cache=c), "9.9.9")
+                self.assertEqual(update.check(fetch, now=2000, cache=c), "9.9.9")
+                self.assertEqual(len(calls), 1)
+            with mock.patch.dict(os.environ, {"LURE_NO_UPDATE_CHECK": "1"}):
+                self.assertIsNone(update.check(fetch, now=999999, cache=c))
+            self.assertIsNone(update.check(lambda u: 1 / 0, now=10 ** 9, cache=os.path.join(d, "x.json")))
+
+
+class ConsoleTest(unittest.TestCase):
+    def test_test_now_endpoint_runs_the_tester_and_refuses_cross_site(self):
+        import threading, urllib.request
+        from lure.ui import serve
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("127.0.0.1", d)
+            a = Alerter(m, out=lambda l: None)
+            fired = threading.Event()
+            port = free_port()
+            srv = serve(a, "127.0.0.1", port, tester=fired.set)
+            try:
+                def post(origin):
+                    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/test", data=b"{}", method="POST",
+                                                 headers={"Content-Type": "application/json", "Origin": origin})
+                    try:
+                        return urllib.request.urlopen(req, timeout=3).status
+                    except urllib.error.HTTPError as e:
+                        return e.code
+                self.assertEqual(post("http://evil.example"), 403)
+                self.assertFalse(fired.is_set())
+                self.assertEqual(post(f"http://127.0.0.1:{port}"), 200)
+                self.assertTrue(fired.wait(3))
+                page = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3).read().decode()
+                self.assertIn("Test now", page)
+                self.assertIn("Alert channels", page)
+            finally:
+                srv.shutdown()

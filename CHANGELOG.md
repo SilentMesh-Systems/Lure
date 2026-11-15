@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.0b3 (unreleased; release tag v0.1.0b3)
+Fixes from the founder's own test on Windows, 15 Nov 2026.
+- Dashboard rebuilt as a console: sidebar (Overview, Incidents, Baits, Alert channels), status pill, 14-day activity chart, one incident per source with a timeline and a what-to-do checklist, searchable bait inventory, and a Test now button that fires a real bait login at your own listener. The score ring is gone.
+- Every alert now says who (this computer, a device on your network, or the internet), what bait, how it was used, and what to do, in the dashboard, webhooks, email and popups.
+- Demo alerts are marked as demo everywhere, with a banner on the dashboard, so a demo can never look like a real attack.
+- Alerts without a webhook: `--desktop` popups on Windows, Linux and macOS, `--email-to` through your own Gmail or Outlook (app password from LURE_SMTP_PASSWORD, never saved), and readable ntfy push messages.
+- `lure init` asks two questions: home or work computer, and how you want to be told. The choice is saved outside the bait folder.
+- No real company names in baits: vendors are roles such as "AMC vendor" or "automation vendor" in every profile.
+- Home profile writes a plain `passwords.txt` style note and a Wi-Fi QR, not an office spreadsheet.
+- Windows: commands print as `py -m lure`; if port 3389 is taken by Remote Desktop, the RDP bait uses 13389, and listen, test and rotate read ports from the manifest.
+- Updates by approval: `lure listen` checks PyPI once a day and only tells you; `lure update` shows what changed and installs only when you type yes. Off with --no-update-check or LURE_NO_UPDATE_CHECK=1. Releases publish only after tests pass, the tag matches the version, and a reviewer approves.
+
 ## 0.1.0-beta.2 (10 Nov 2026)
 - MCP server speaks spec 2026-07-28 (`server/discover`, stateless requests) and still answers 2025 `initialize`.
 - `lure test`: fires real bait logins at the listener and confirms the alert.

@@ -13,8 +13,11 @@ import re
 import socket
 import threading
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+
+from .explain import explain, short_who
 
 RDP_COOKIE = re.compile(rb"Cookie: mstshash=([^\r\n]+)")
 HTTP_AUTH = re.compile(rb"Authorization: Basic ([A-Za-z0-9+/=]+)", re.I)
@@ -50,15 +53,29 @@ def _summary(ev):
     return head, where
 
 
+def alert_text(ev, bold=False):
+    """The alert as a short message a person can act on."""
+    head, _ = _summary(ev)
+    x = ev.get("explain") or explain(ev)
+    lines = [f"*{head}*" if bold else head, "Who: " + x["who"], "What: " + x["what"], "How: " + x["how"], "Next:"]
+    lines += [f"  {i}. {step}" for i, step in enumerate(x["next"], 1)]
+    lines.append(f"{ev.get('time')} · severity {ev.get('severity')}")
+    return head, "\n".join(lines)
+
+
+def _ntfy(url):
+    """ntfy wants the topic in the body when it gets JSON: split https://host/topic."""
+    u = urllib.parse.urlsplit(url)
+    if "ntfy" not in u.netloc:
+        return None
+    topic = u.path.strip("/")
+    return (f"{u.scheme}://{u.netloc}/", topic) if topic and "/" not in topic else None
+
+
 def webhook_payload(url, ev):
     """Shape the alert for the webhook's platform; plain JSON for everything else."""
-    head, where = _summary(ev)
-    lines = [f"*{head}*" if "slack" in url else head]
-    if where:
-        lines.append(f"Planted: {where}")
-    lines.append(f"From {ev.get('source')} over {ev.get('service')}" + (f" as {ev['username']}" if ev.get("username") else ""))
-    lines.append(f"{ev.get('time')} · severity {ev.get('severity')}")
-    text = "\n".join(lines)
+    head, text = alert_text(ev, bold="slack" in url)
+    where = ev.get("location") or ev.get("planted_on") or ""
     if "hooks.slack.com" in url:
         return {"text": text, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}},
                                          {"type": "context", "elements": [{"type": "mrkdwn", "text": "SilentMesh Lure · " + ev.get("why", "")}]}]}
@@ -73,18 +90,77 @@ def webhook_payload(url, ev):
                                ("Username", ev.get("username")), ("Time", ev.get("time")), ("Why", ev.get("why"))] if v]}]}
     if "api.telegram.org" in url:
         return {"text": text}
+    nt = _ntfy(url)
+    if nt:
+        return {"topic": nt[1], "title": head, "message": text, "priority": 5 if ev.get("severity") == "high" else 3,
+                "tags": ["warning"]}
     return ev
+
+
+def _incidents(alerts):
+    """One incident per source address: what they did, in order, and what to do now."""
+    by_ip = {}
+    for a in reversed(alerts):
+        by_ip.setdefault(a["source"].rsplit(":", 1)[0], []).append(a)
+    out = []
+    for ip, evs in by_ip.items():
+        highs = [e for e in evs if e.get("severity") == "high"]
+        last = (highs or evs)[-1]
+        out.append({
+            "source": ip, "who": last["explain"]["who"], "from": short_who(ip), "baits": len({e["bait_file"] for e in highs}),
+            "first": evs[0]["time"], "last": evs[-1]["time"], "severity": "high" if highs else "medium",
+            "steps": [{"time": e["time"], "how": e["explain"]["how"]} for e in evs],
+            "next": last["explain"]["next"], "ids": [e["id"] for e in evs],
+            "handled": all(e.get("acknowledged") for e in evs), "demo": any(e.get("demo") for e in evs)})
+    open_ = sorted([i for i in out if not i["handled"]], key=lambda i: i["last"], reverse=True)
+    done = sorted([i for i in out if i["handled"]], key=lambda i: i["last"], reverse=True)
+    return open_ + done
+
+
+def _channel_name(url):
+    if not url:
+        return None
+    host = urllib.parse.urlsplit(url).netloc
+    for key, name in (("slack", "Slack"), ("discord", "Discord"), ("telegram", "Telegram"), ("ntfy", "ntfy"),
+                      ("office", "Teams"), ("logic.azure", "Teams")):
+        if key in host:
+            return name
+    return host or "webhook"
+
+
+def _files(baits):
+    """Baits grouped by file: the spreadsheet holds several logins but is one thing to plant."""
+    files = {}
+    for b in baits:
+        f = files.setdefault(b["file"], {"file": b["file"], "plant_on": b.get("plant_on"), "location": b.get("location"),
+                                         "logins": 0, "used": False, "retired": bool(b.get("retired"))})
+        f["logins"] += 1
+        f["used"] = f["used"] or b.get("triggered", False)
+        f["location"] = f["location"] or b.get("location")
+        if "(" in (f["plant_on"] or "") and " row)" in f["plant_on"]:
+            f["plant_on"] = f["plant_on"].split(" (")[0]
+    return list(files.values())
+
+
+def smtplib_error():
+    import smtplib
+    return smtplib.SMTPException
 
 
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
-    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None, merge_window=0):
+    def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None,
+                 merge_window=0, desktop=False, email=None, demo=False):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
         # Services whose username cannot be read (OpenVPN) are identified by port.
         # Only live baits own a port; a rotated set reuses the same ports.
         self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port") and not b.get("retired")}
         self.webhook, self.syslog, self.out = webhook, syslog, out
+        self.desktop, self.email, self.demo = desktop, email, demo
+        self.update_available = None
+        self.started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.syslog_on = bool(syslog)
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
@@ -134,6 +210,9 @@ class Alerter:
         }
         if source_detail:
             ev["detail"] = source_detail
+        if self.demo:
+            ev["demo"] = True
+        ev["explain"] = explain(ev)
         key = (src_ip, service, username)
         if now - self.seen.get(key, -1e18) < self.window:
             return None
@@ -166,19 +245,20 @@ class Alerter:
             self._emit(held[0])
 
     def acknowledge(self, alert_id):
+        ids = set(alert_id) if isinstance(alert_id, (list, tuple, set)) else {alert_id}
         with self.lock:
+            hit = False
             for ev in self.history:
-                if ev.get("id") == alert_id:
-                    ev["acknowledged"] = True
-                    if self.log:
-                        with open(self.log, "w") as f:
-                            f.writelines(json.dumps(e) + "\n" for e in self.history)
-                    return True
-        return False
+                if ev.get("id") in ids:
+                    ev["acknowledged"] = hit = True
+            if hit and self.log:
+                with open(self.log, "w") as f:
+                    f.writelines(json.dumps(e) + "\n" for e in self.history)
+        return hit
 
     def state(self):
         with self.lock:
-            alerts = list(reversed(self.history))
+            alerts = [a if "explain" in a else dict(a, explain=explain(a)) for a in reversed(self.history)]
         fired = {a["username"] for a in alerts if a.get("severity") == "high"}
         baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])
                  if not b.get("retired") or b["username"] in fired]
@@ -190,7 +270,10 @@ class Alerter:
                 step = {"time": a["time"], "file": a["bait_file"], "service": a["service"]}
                 if not paths.get(ip) or paths[ip][-1]["file"] != step["file"]:
                     paths.setdefault(ip, []).append(step)
-        return {"baits": baits, "alerts": alerts, "paths": paths}
+        return {"baits": baits, "alerts": alerts, "paths": paths, "demo": self.demo, "update": self.update_available,
+                "incidents": _incidents(alerts), "files": _files(baits), "since": self.started,
+                "channels": {"desktop": bool(self.desktop), "email": (self.email or {}).get("to"),
+                             "webhook": _channel_name(self.webhook), "syslog": self.syslog_on}}
 
     def _emit(self, ev):
         line = json.dumps(ev)
@@ -207,11 +290,28 @@ class Alerter:
             pass
         if self.webhook:
             try:
-                req = urllib.request.Request(self.webhook, data=json.dumps(webhook_payload(self.webhook, ev)).encode(),
+                nt = _ntfy(self.webhook)
+                req = urllib.request.Request(nt[0] if nt else self.webhook,
+                                             data=json.dumps(webhook_payload(self.webhook, ev)).encode(),
                                              headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5).close()
             except OSError as e:
                 self.out(json.dumps({"error": f"webhook failed: {e}"}))
+        if self.desktop or self.email:
+            head, text = alert_text(ev)
+            if self.desktop:
+                from .notify import desktop
+                x = ev["explain"]
+                try:
+                    desktop("Lure: " + head, x["who"] + " " + x["how"])
+                except Exception as e:
+                    self.out(json.dumps({"error": f"desktop popup failed: {e}"}))
+            if self.email:
+                from .notify import email
+                try:
+                    email(self.email, "Lure alert: " + head, text)
+                except (OSError, smtplib_error()) as e:
+                    self.out(json.dumps({"error": f"email failed: {e}"}))
         if self.syslog:
             host, _, port = self.syslog.partition(":")
             msg = f"<10>lure: {line}".encode()

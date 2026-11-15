@@ -73,8 +73,8 @@ def demo(open_browser=True, keep=False):
     print(f"\nLure demo: {len(m['baits'])} bait credentials in {len(files)} files, planted in {d}")
     for f in files:
         print(f"  {f}")
-    alerter = Alerter(m, out=lambda line: print("  ALERT " + line, flush=True),
-                      log=os.path.join(d, "alerts.jsonl"))
+    alerter = Alerter(m, out=lambda line: print("  DEMO ALERT " + line, flush=True),
+                      log=os.path.join(d, "alerts.jsonl"), demo=True)
     serve(alerter, "127.0.0.1", ui_port)
     url = f"http://127.0.0.1:{ui_port}/"
     print(f"\nDashboard: {url}")
@@ -104,6 +104,7 @@ def demo(open_browser=True, keep=False):
     print(f"  {len([a for a in state['alerts'] if a['severity'] == 'high'])} high alerts, attacker path: "
           + " -> ".join(s["file"] for s in path))
     print(f"\nOpening, copying or scanning the files never fired anything. Only using a credential did.")
+    print("These were demo alerts from a pretend attacker on this computer. Nothing real happened.")
     if keep:
         print(f"Dashboard stays up at {url}. Press Ctrl+C to stop.")
         try:
@@ -111,5 +112,6 @@ def demo(open_browser=True, keep=False):
                 time.sleep(3600)
         except KeyboardInterrupt:
             pass
-    print("\nNext: lure generate --listener <spare machine IP> --out baits   (see README)")
+    from .init import cmd
+    print(f"\nNext, for real: {cmd('init')}, then {cmd('listen --ui')}")
     return state

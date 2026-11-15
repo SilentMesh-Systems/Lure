@@ -18,10 +18,10 @@
   ],
   "jump": "STORE-SRV-01",
   "vendors": [
-    "Shopify partner",
-    "Pine Labs",
-    "Tally partner",
-    "Airtel"
+    "POS vendor",
+    "Payments partner",
+    "Accounts vendor",
+    "Network vendor"
   ],
   "words": [
     "Store",

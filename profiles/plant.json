@@ -18,10 +18,10 @@
   ],
   "jump": "JUMP-OT-01",
   "vendors": [
-    "Siemens",
-    "ABB",
-    "Honeywell",
-    "Schneider"
+    "Automation vendor",
+    "SCADA integrator",
+    "DCS vendor",
+    "OEM service"
   ],
   "words": [
     "Turbine",

@@ -62,7 +62,7 @@ def _next(ev, ip):
                 "If not, find which device has that address and what it was doing."]
     steps = []
     if loop:
-        steps.append("If you just ran `lure test`, this is expected and safe to mark investigated.")
+        steps.append("If you just ran `lure test`, this is expected and safe to mark handled.")
         steps.append("If not, check which programs are running on this computer and who is logged in.")
     else:
         steps.append(f"Find which device has the address {ip} (your router's device list shows it).")
@@ -70,7 +70,7 @@ def _next(ev, ip):
     steps.append("Change any real password kept in the same place as the bait.")
     if ev.get("retired"):
         steps.append("This bait was replaced earlier, so the credential was taken before the last rotation.")
-    steps.append("Click Mark investigated when you are done.")
+    steps.append("Mark it handled when you are done.")
     return steps
 
 

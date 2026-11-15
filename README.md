@@ -201,7 +201,7 @@ Every alert says, in plain words, **who** (this computer, a device on your netwo
 lure listen --manifest baits/manifest.json --ui
 ```
 
-Then open http://127.0.0.1:8765 on the listener host. It is a SOC console. A status band says SECURE or INTRUSION IN PROGRESS at a glance. The attack graph draws each attacker and every bait they took, in order. The incident panel gives a threat score, the MITRE ATT&CK tactics and techniques, the storyline and a response checklist. Run attack test fires a real bait login at your own listener and times the detection. Export gives every alert as CSV or JSON. The `lure demo` dashboard carries a DEMO banner so it can never be mistaken for a real attack. The dashboard listens on 127.0.0.1 only by default, needs nothing installed, and sends nothing anywhere. Alerts are also kept in `alerts.jsonl` next to the manifest, so the history survives a restart.
+Then open http://127.0.0.1:8765 on the listener host. It is an operator console. The incident queue shows one incident per source; the detail pane says why it was flagged, the timeline with the ATT&CK technique for each step, the impact (including what Lure cannot see), what to do, and its handling status. There is also a 24-hour histogram, a live feed, the bait inventory and the alert channels. Run test fires a real bait login at your own listener; export gives every alert as CSV or JSON. Fonts are bundled, so the page makes no outside requests.
 
 ## Use it from an AI agent (MCP)
 

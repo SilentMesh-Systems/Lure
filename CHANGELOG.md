@@ -2,7 +2,7 @@
 
 ## 0.1.0b3 (unreleased; release tag v0.1.0b3)
 Fixes from the founder's own test on Windows, 15 Nov 2026.
-- Dashboard rebuilt as a SOC console: a status band that reads SECURE or INTRUSION IN PROGRESS at a glance, a live attack graph (attacker to every bait taken, numbered in order, animated), an incident panel with a threat score, MITRE tactics and techniques, a storyline and a response checklist, live detections, bait inventory, integrations, CSV and JSON export, and Run attack test that fires a real bait login and times the detection.
+- Dashboard rebuilt as an operator console in the SilentMesh console design: an incident queue with one incident per source, a detail pane (why it was flagged, timeline with ATT&CK technique, impact including what Lure cannot see, what to do, handling), a 24-hour histogram, live feed, bait inventory, integrations, CSV and JSON export, keyboard shortcuts, and Run test that fires a real bait login at your own listener. Fonts are bundled, so the dashboard makes no outside requests.
 - Every alert now says who (this computer, a device on your network, or the internet), what bait, how it was used, and what to do, in the dashboard, webhooks, email and popups.
 - Demo alerts are marked as demo everywhere, with a banner on the dashboard, so a demo can never look like a real attack.
 - Alerts without a webhook: `--desktop` popups on Windows, Linux and macOS, `--email-to` through your own Gmail or Outlook (app password from LURE_SMTP_PASSWORD, never saved), and readable ntfy push messages.

@@ -223,7 +223,7 @@ class DashboardTest(unittest.TestCase):
             try:
                 base = f"http://127.0.0.1:{port}"
                 page = urllib.request.urlopen(base + "/", timeout=5).read().decode()
-                self.assertIn("SilentMesh", page)
+                self.assertIn("Lure console", page)
                 st = json.loads(urllib.request.urlopen(base + "/api/state", timeout=5).read())
                 self.assertTrue(st["baits"][0]["triggered"])
                 self.assertEqual(st["alerts"][0]["severity"], "high")
@@ -802,7 +802,38 @@ class ConsoleTest(unittest.TestCase):
                 self.assertEqual(post(f"http://127.0.0.1:{port}"), 200)
                 self.assertTrue(fired.wait(3))
                 page = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3).read().decode()
-                self.assertIn("Run attack test", page)
-                self.assertIn("Live detections", page)
+                self.assertIn("Run test", page)
+                self.assertIn("Live feed", page)
+                self.assertIn("why this was flagged", page)
+                self.assertIn("cannot tell you", page)
             finally:
                 srv.shutdown()
+
+
+class FontsTest(unittest.TestCase):
+    def test_bundled_fonts_are_served_and_nothing_else(self):
+        import urllib.request, urllib.error
+        from lure.ui import serve, FONTS
+        a = Alerter({"baits": []}, out=lambda l: None)
+        port = free_port()
+        srv = serve(a, "127.0.0.1", port)
+        try:
+            base = f"http://127.0.0.1:{port}"
+            for name in FONTS:
+                r = urllib.request.urlopen(base + "/fonts/" + name, timeout=5)
+                self.assertEqual(r.status, 200)
+                self.assertEqual(r.headers["Content-Type"], "font/woff2")
+                self.assertEqual(r.read()[:4], b"wOF2")
+            for bad in ("/fonts/nope.woff2", "/fonts/../ui.py", "/fonts/..%2Fui.py", "/fonts/", "/fonts/OFL.txt"):
+                try:
+                    code = urllib.request.urlopen(base + bad, timeout=5).status
+                except urllib.error.HTTPError as e:
+                    code = e.code
+                self.assertEqual(code, 404, bad)
+            r = urllib.request.urlopen(base + "/", timeout=5)
+            self.assertIn("font-src 'self'", r.headers["Content-Security-Policy"])
+            page = r.read().decode()
+            self.assertNotIn("googleapis", page)
+            self.assertNotIn("\u2014", page)
+        finally:
+            srv.shutdown()

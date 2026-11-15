@@ -26,3 +26,6 @@ silentmesh-lure = "lure.__main__:main"
 
 [tool.setuptools]
 packages = ["lure"]
+
+[tool.setuptools.package-data]
+lure = ["fonts/*.woff2", "fonts/OFL.txt"]

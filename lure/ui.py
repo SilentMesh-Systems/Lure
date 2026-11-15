@@ -15,246 +15,230 @@ from ._mark import MARK_PNG_B64
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lure: Operator Console</title>
+<title>Lure: SilentMesh</title>
 <style>
-*,*::before,*::after{box-sizing:border-box}[hidden]{display:none!important}
-body{background:#0d1117;color:#c9d1d9;font-family:'SF Mono','Cascadia Mono',Consolas,'Liberation Mono',monospace;margin:0;min-height:100vh;font-size:12px}
-button{font-family:inherit}
-.header{background:#161b22;border-bottom:1px solid #21262d;padding:14px 24px;display:flex;align-items:center;gap:14px}
-.header img{width:30px;height:30px;border-radius:7px}
-.logo{color:#5FE07F;font-size:18px;font-weight:700;letter-spacing:3px}.logo-sub{color:#484f58;font-size:11px;letter-spacing:2px;margin-top:2px;text-transform:uppercase}
-.header-right{margin-left:auto;display:flex;align-items:center;gap:14px}
-.refresh{font-size:10px;color:#484f58}
-.pill{display:flex;align-items:center;gap:8px;background:#0d1117;border:1px solid #21262d;border-radius:20px;padding:5px 14px;font-size:11px;letter-spacing:1px}
-.dot{width:8px;height:8px;border-radius:50%;background:#3fb950;box-shadow:0 0 8px #3fb95066}
-.pill.bad .dot{background:#f85149;box-shadow:0 0 8px #f8514966;animation:p 1.1s infinite}.pill.bad{color:#f85149}.pill.ok{color:#3fb950}
-.pill.demo .dot{background:#e3b341;box-shadow:0 0 8px #e3b34166}.pill.demo{color:#e3b341}
-@keyframes p{50%{opacity:.3}}@media (prefers-reduced-motion:reduce){.dot{animation:none!important}}
-.host{color:#bc8cff}.host b{color:#f0f6fc}
-.cmdbar{display:flex;align-items:center;gap:10px;padding:10px 24px;border-bottom:1px solid #21262d;flex-wrap:wrap}
-.cmdbar .spacer{flex:1}
-.tb-btn{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #30363d;background:#21262d;color:#c9d1d9;font-weight:600}
-.tb-btn:hover{background:#30363d}.tb-btn:disabled{opacity:.5;cursor:default}
-.tb-btn.primary{background:#0f2a17;color:#5FE07F;border-color:#3fb95066}.tb-btn.primary:hover{background:#163a20}
-.cmd-status{font-size:11px;color:#8b949e}.cmd-status.ok{color:#3fb950}.cmd-status.bad{color:#f85149}
+:root{--bg:#05070A;--p:#0B0F14;--p2:#111821;--line:rgba(255,255,255,.07);--text:#E8EDF2;--dim:#7D8896;--faint:#4A5562;
+--red:#FF3B5C;--redg:rgba(255,59,92,.14);--green:#22D38A;--greeng:rgba(34,211,138,.12);--amber:#FFB020;--amberg:rgba(255,176,32,.12);--blue:#4C8DFF;--violet:#9B7BFF}
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{height:100%}
+body{margin:0;background:radial-gradient(1200px 600px at 70% -200px,rgba(76,141,255,.08),transparent 70%),var(--bg);color:var(--text);
+ font:13px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer}
+.mono{font-family:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace}
+/* top */
+.top{display:flex;align-items:center;gap:22px;padding:0 28px;height:58px;border-bottom:1px solid var(--line);background:rgba(5,7,10,.7);backdrop-filter:blur(10px);position:sticky;top:0;z-index:20}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px}.logo img{width:26px;height:26px;border-radius:7px}.logo span{color:var(--green)}
+.nav{display:flex;gap:2px;height:100%}.nav button{background:none;border:0;color:var(--dim);padding:0 16px;height:100%;border-bottom:2px solid transparent;font-weight:500}
+.nav button:hover{color:var(--text)}.nav button.on{color:var(--text);border-bottom-color:var(--blue)}
+.nav .n{background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:6px;font-weight:700}
+.grow{flex:1}
+.chip-host{color:var(--dim);font-size:12px}.chip-host b{color:var(--text);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--p2);color:var(--text);padding:8px 14px;border-radius:9px;font-weight:600;transition:all .15s}
+.btn:hover{border-color:rgba(255,255,255,.18);transform:translateY(-1px)}
+.btn.go{background:linear-gradient(180deg,#2a7cff,#1f63d6);border-color:#3b82f6;color:#fff;box-shadow:0 6px 18px rgba(47,111,235,.35)}
+.btn.red{background:var(--redg);border-color:rgba(255,59,92,.4);color:#ff9fb0}
+.btn:disabled{opacity:.45;transform:none;cursor:default}
 .menu{position:relative}.menu summary{list-style:none}.menu summary::-webkit-details-marker{display:none}
-.menu .items{position:absolute;top:calc(100% + 4px);left:0;z-index:30;min-width:220px;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:4px}
-.menu .items a{display:block;color:#c9d1d9;padding:7px 10px;text-decoration:none;border-radius:4px}.menu .items a:hover{background:#21262d}
-.strip{padding:10px 24px;font-size:12px;line-height:1.6;border-bottom:1px solid}
-.strip.demo{background:#2d2200;border-color:#e3b34144;color:#f2d68a}.strip.demo b{color:#e3b341}
-.strip.alarm{background:#2a1515;border-color:#f8514944;color:#f0c9c6}.strip.alarm b{color:#f85149}
-.strip.upd{background:#0f1a12;border-color:#3fb95033;color:#c9d1d9}.strip.upd b{color:#5FE07F}
-code{color:#5FE07F;background:#161b22;border:1px solid #21262d;border-radius:4px;padding:1px 6px}
-.modules{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 24px;border-bottom:1px solid #21262d}
-.mod{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;position:relative;overflow:hidden}
-.mod::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:#3fb950}
-.mod.warn::before{background:#e3b341}.mod.bad::before{background:#f85149}.mod.off::before{background:#30363d}
-.mod-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
-.mod-name{font-size:11px;font-weight:700;letter-spacing:1.5px;color:#f0f6fc;text-transform:uppercase}
-.st{font-size:9px;letter-spacing:1px;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid}
-.st.ok{background:#1a3a1a;color:#3fb950;border-color:#3fb95044}.st.warn{background:#2d2200;color:#e3b341;border-color:#e3b34144}
-.st.bad{background:#3a1a1a;color:#f85149;border-color:#f8514944}.st.off{background:#21262d;color:#8b949e;border-color:#30363d}
-.mod-desc{color:#8b949e;font-size:11px;line-height:1.6;margin-bottom:10px}
-.mod-m{font-size:11px;color:#8b949e;margin-top:3px}.mod-m span{color:#c9d1d9}
-.stats{display:flex;border-bottom:1px solid #21262d}
-.stat{flex:1;padding:14px 24px;border-right:1px solid #21262d}.stat:last-child{border-right:0}
-.stat-l{font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:1px}
-.stat-v{font-size:26px;font-weight:700;color:#f0f6fc;margin-top:4px}.stat-v.red{color:#f85149}.stat-v.green{color:#3fb950}.stat-v.blue{color:#58a6ff}.stat-v.yellow{color:#e3b341;font-size:14px;margin-top:10px}
-.tabs{display:flex;border-bottom:1px solid #21262d;padding:0 24px}
-.tab{padding:12px 20px;cursor:pointer;color:#8b949e;border:0;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;font-size:12px;letter-spacing:.5px}
-.tab:hover{color:#c9d1d9}.tab.on{color:#f0f6fc;border-bottom-color:#5FE07F}
-.cnt{background:#3a1a1a;color:#f85149;border-radius:10px;padding:0 6px;margin-left:6px;font-size:10px}
-.panel{display:none;padding:16px 24px 32px}.panel.on{display:block}
-.sec-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.sec-t{color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1.5px}.badge{background:#21262d;color:#8b949e;font-size:10px;padding:2px 8px;border-radius:10px}
-.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
-.toolbar select,.toolbar input{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:6px 10px;font:inherit}
-.toolbar input{min-width:240px}.toolbar .spacer{flex:1}
+.menu .items{position:absolute;right:0;top:calc(100% + 6px);background:var(--p2);border:1px solid var(--line);border-radius:10px;padding:6px;min-width:170px;z-index:30;box-shadow:0 20px 40px rgba(0,0,0,.5)}
+.menu a{display:block;color:var(--text);text-decoration:none;padding:8px 10px;border-radius:7px}.menu a:hover{background:rgba(255,255,255,.05)}
+.toast{position:fixed;right:24px;bottom:24px;background:var(--p2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:0 20px 50px rgba(0,0,0,.6);z-index:50;max-width:380px;transition:all .3s}
+.toast.ok{border-color:rgba(34,211,138,.4)}.toast.bad{border-color:rgba(255,59,92,.4)}
+.wrap{padding:22px 28px 40px;display:flex;flex-direction:column;gap:18px;max-width:1600px;margin:0 auto}
+/* status band */
+.band{position:relative;overflow:hidden;border-radius:16px;padding:22px 26px;display:flex;align-items:center;gap:26px;border:1px solid var(--line)}
+.band.secure{background:linear-gradient(90deg,rgba(34,211,138,.16),rgba(34,211,138,.02) 60%),var(--p)}
+.band.attack{background:linear-gradient(90deg,rgba(255,59,92,.28),rgba(255,59,92,.04) 65%),var(--p);border-color:rgba(255,59,92,.35)}
+.band.demo{background:linear-gradient(90deg,rgba(255,176,32,.2),rgba(255,176,32,.03) 65%),var(--p);border-color:rgba(255,176,32,.3)}
+.band.attack:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,59,92,.18),transparent);transform:translateX(-100%);animation:sweep 2.8s infinite}
+@keyframes sweep{to{transform:translateX(100%)}}
+.beacon{position:relative;width:54px;height:54px;flex:none}
+.beacon i{position:absolute;inset:14px;border-radius:50%;background:var(--c)}
+.beacon i:nth-child(2),.beacon i:nth-child(3){inset:0;background:none;border:2px solid var(--c);opacity:0;animation:ring 2s infinite}
+.beacon i:nth-child(3){animation-delay:1s}
+@keyframes ring{0%{transform:scale(.35);opacity:.9}100%{transform:scale(1);opacity:0}}
+.state .k{font-size:11px;letter-spacing:2.5px;color:var(--dim);font-weight:700}
+.state .v{font-size:30px;font-weight:800;letter-spacing:.5px;line-height:1.1;margin-top:2px}
+.state .s{color:var(--dim);margin-top:4px}
+.kpis{margin-left:auto;display:flex;gap:30px}
+.kpi .k{font-size:11px;color:var(--dim);letter-spacing:1px;text-transform:uppercase}.kpi .v{font-size:26px;font-weight:700;margin-top:2px}
+.kpi .v.r{color:var(--red)}.kpi .v.g{color:var(--green)}
+/* grid */
+.g{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(360px,1fr);gap:18px}
+.card{background:var(--p);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.ch{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.ch h3{margin:0;font-size:13px;font-weight:600}.ch .sub{color:var(--faint);font-size:12px}
+.legend{display:flex;gap:14px;color:var(--dim);font-size:11px}.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+svg text{font-family:ui-sans-serif,system-ui,sans-serif}
+.flow{stroke-dasharray:6 8;animation:flow 1s linear infinite}@keyframes flow{to{stroke-dashoffset:-14}}
+.pulse{animation:pn 1.6s ease-in-out infinite;transform-origin:center;transform-box:fill-box}@keyframes pn{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.flow,.pulse,.band:after,.beacon i{animation:none!important}}
+/* incident panel */
+.ip{padding:18px;display:flex;flex-direction:column;gap:16px}
+.ih{display:flex;gap:16px;align-items:center}
+.dial{width:84px;height:84px;flex:none;position:relative}
+.dial svg{transform:rotate(-90deg)}.dial .n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:24px;font-weight:800;line-height:1}
+.dial .n small{display:block;font-size:8px;letter-spacing:1.5px;color:var(--dim);font-weight:700;margin-top:4px}
+.ih .t{font-size:16px;font-weight:700}.ih .w{color:var(--dim);margin-top:3px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px;background:rgba(155,123,255,.12);color:#c3b2ff;border:1px solid rgba(155,123,255,.25)}
+.tag.t{background:rgba(76,141,255,.1);color:#9cc0ff;border-color:rgba(76,141,255,.25)}
+.lbl{font-size:11px;letter-spacing:1.5px;color:var(--faint);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+.tl{display:flex;flex-direction:column}
+.ts{display:grid;grid-template-columns:62px 14px 1fr;gap:10px;padding:6px 0;align-items:start;cursor:pointer}
+.ts .tm{color:var(--faint);font-size:11px}.ts .d{width:9px;height:9px;border-radius:50%;background:var(--red);margin-top:4px;box-shadow:0 0 0 4px var(--redg)}
+.ts .x b{font-weight:600}.ts .x span{color:var(--dim)}.ts .more{color:var(--dim);font-size:12px;margin-top:4px;display:none}.ts.open .more{display:block}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.steps{display:flex;flex-direction:column;gap:6px}.steps label{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.025);cursor:pointer}
+.steps input{accent-color:var(--green);margin-top:2px}
+.none{padding:40px 20px;text-align:center;color:var(--dim)}.none b{display:block;color:var(--text);font-size:15px;margin-bottom:6px}
+.none .ok{width:56px;height:56px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;background:var(--greeng);color:var(--green);font-size:26px;font-weight:800}
+/* feed */
 table{width:100%;border-collapse:collapse}
-thead th{background:#161b22;color:#8b949e;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:8px 12px;text-align:left;border-bottom:1px solid #21262d;font-weight:600}
-tbody tr{border-bottom:1px solid #161b22}tbody tr:hover td{background:#161b22}tbody tr.click{cursor:pointer}tbody tr.sel td{background:#1c2128}
-td{padding:9px 12px;vertical-align:top}
-.t-time{color:#8b949e;white-space:nowrap}.t-ip{color:#58a6ff;font-weight:600;white-space:nowrap}
-.proto{color:#bc8cff;background:#2d1f6e22;border:1px solid #bc8cff33;border-radius:4px;padding:2px 8px;font-size:10px;display:inline-block;letter-spacing:.5px;text-transform:uppercase}
-.tech{color:#e3b341;white-space:nowrap}.tech small{display:block;color:#8b949e;font-size:10px}
-.sev{font-size:9px;letter-spacing:1px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;display:inline-block;white-space:nowrap}
-.sev.HIGH{background:#3a1a1a;color:#f85149;border:1px solid #f8514944}.sev.MEDIUM{background:#2d2200;color:#e3b341;border:1px solid #e3b34144}
-.sev.DEMO{background:#2d2200;color:#e3b341;border:1px dashed #e3b34188}.sev.DONE{background:#21262d;color:#8b949e;border:1px solid #30363d}
-.sev.OK{background:#1a3a1a;color:#3fb950;border:1px solid #3fb95044}
-.what{color:#c9d1d9;max-width:520px}.what small{display:block;color:#8b949e;margin-top:2px}
-.empty td{text-align:center;color:#484f58;padding:48px;font-size:13px}
-.row-btn{padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #30363d;background:#21262d;color:#58a6ff;cursor:pointer}
-.split{display:grid;grid-template-columns:minmax(380px,1fr) 1.3fr;gap:16px}
-.detail{background:#161b22;border:1px solid #21262d;border-radius:8px}
-.d-h{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;gap:12px;align-items:flex-start}
-.d-h h3{margin:0;color:#f0f6fc;font-size:14px}.d-h .sub{color:#8b949e;margin-top:4px;line-height:1.6}.d-h .grow{flex:1}
-.kv{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #21262d}
-.kv>div{padding:12px 20px;border-right:1px solid #21262d}.kv>div:last-child{border-right:0}
-.kv .k{color:#8b949e;font-size:10px;letter-spacing:1.5px;text-transform:uppercase}.kv .v{color:#f0f6fc;margin-top:4px;font-size:13px}
-.d-sec{padding:16px 20px;border-bottom:1px solid #21262d}.d-sec:last-child{border-bottom:0}
-.d-t{color:#8b949e;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px}
-.chain{display:flex;flex-direction:column;gap:0}
-.step{display:grid;grid-template-columns:70px 18px 1fr;gap:10px;align-items:start;padding:6px 0}
-.step .tm{color:#8b949e}.step .nd{width:10px;height:10px;border-radius:50%;background:#f85149;margin-top:3px;box-shadow:0 0 0 3px #3a1a1a}
-.step .tx{color:#c9d1d9;line-height:1.55}.step .tx .tech{font-size:10px;margin-left:6px}
-.todo{display:flex;flex-direction:column;gap:6px}
-.todo label{display:flex;gap:10px;padding:8px 12px;background:#0d1117;border:1px solid #21262d;border-radius:6px;cursor:pointer;line-height:1.55}
-.todo input{accent-color:#3fb950;margin-top:2px}
-.act{display:flex;gap:10px;padding:14px 20px}
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:18px}
-.card h4{margin:0 0 6px;color:#f0f6fc;font-size:13px}.card p{margin:0;color:#8b949e;font-size:11px;line-height:1.6}
-.card .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-@media (max-width:1100px){.modules{grid-template-columns:repeat(2,1fr)}.split{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.kv{grid-template-columns:repeat(2,1fr)}}
+th{text-align:left;font-size:11px;color:var(--faint);font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:10px 18px}
+td{padding:11px 18px;border-top:1px solid var(--line);white-space:nowrap}
+tr.r{cursor:pointer;transition:background .12s}tr.r:hover td{background:rgba(255,255,255,.025)}
+.sv{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:11px;letter-spacing:.5px}
+.sv i{width:8px;height:8px;border-radius:2px}.sv.c{color:var(--red)}.sv.c i{background:var(--red)}.sv.m{color:var(--amber)}.sv.m i{background:var(--amber)}.sv.d{color:var(--dim)}.sv.d i{background:var(--faint)}
+.ipx{color:#9cc0ff;font-weight:600}
+.f{font-family:ui-monospace,monospace;font-size:12px;color:var(--text)}
+.sm{color:var(--dim)}
+.bar{display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.bar input,.bar select{background:var(--p2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 11px;font:inherit}.bar input{width:280px}
+.view{display:none}.view.on{display:flex;flex-direction:column;gap:18px}
+.integ{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ic{background:var(--p);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:8px}
+.ic .h{display:flex;justify-content:space-between;align-items:center}.ic b{font-size:14px}
+.on-chip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:7px}.on-chip.y{background:var(--greeng);color:var(--green)}.on-chip.n{background:rgba(255,255,255,.05);color:var(--dim)}
+.ic code{font:12px ui-monospace,monospace;color:#9cc0ff;background:rgba(76,141,255,.08);padding:6px 8px;border-radius:7px;display:block;white-space:normal}
+.notice{border-radius:12px;padding:12px 16px;display:flex;gap:10px;align-items:center;border:1px solid var(--line);background:var(--p)}
+.notice b{color:var(--green)}.notice code{font:12px ui-monospace,monospace;color:#9cc0ff}
+@media (max-width:1100px){.g{grid-template-columns:1fr}.kpis{display:none}.integ{grid-template-columns:1fr}}
 </style></head><body>
-<div class="header">
- <img alt="" src="data:image/png;base64,__MARK__">
- <div><div class="logo">LURE</div><div class="logo-sub">SilentMesh · credential tripwires</div></div>
- <div class="header-right">
-  <div class="refresh" id="refresh"></div>
-  <div class="pill host">LISTENER <b id="h-host">—</b></div>
-  <div class="pill ok" id="pill"><span class="dot"></span><span id="pill-t">CONNECTING</span></div>
+<div class="top">
+ <div class="logo"><img alt="" src="data:image/png;base64,__MARK__">Lure <span>by SilentMesh</span></div>
+ <div class="nav"><button class="on" data-v="overview">Overview</button><button data-v="incidents">Incidents<span class="n" id="nb" hidden></span></button><button data-v="baits">Baits</button><button data-v="integrations">Integrations</button></div>
+ <div class="grow"></div>
+ <div class="chip-host">Listener <b class="mono" id="host">—</b></div>
+ <details class="menu"><summary class="btn">Export</summary><div class="items"><a href="/api/export?fmt=csv">Alerts as CSV</a><a href="/api/export?fmt=json">Alerts as JSON</a></div></details>
+ <button class="btn go" id="test">Run attack test</button>
+</div>
+<div class="wrap">
+ <div class="notice" id="upd" hidden></div>
+ <section class="band secure" id="band">
+  <div class="beacon" id="beacon" style="--c:var(--green)"><i></i><i></i><i></i></div>
+  <div class="state"><div class="k" id="b-k">STATUS</div><div class="v" id="b-v">SECURE</div><div class="s" id="b-s">All baits untouched</div></div>
+  <div class="kpis">
+   <div class="kpi"><div class="k">Active intrusions</div><div class="v" id="k1">0</div></div>
+   <div class="kpi"><div class="k">Baits taken</div><div class="v" id="k2">0</div></div>
+   <div class="kpi"><div class="k">Threat score</div><div class="v" id="k3">0</div></div>
+   <div class="kpi"><div class="k">Watching since</div><div class="v" id="k4">0</div></div>
+  </div>
+ </section>
+
+ <div class="view on" id="v-overview">
+  <div class="g">
+   <div class="card"><div class="ch"><h3>Attack graph</h3><span class="sub">who took which bait, in order</span><div class="grow"></div>
+    <div class="legend"><span><i style="background:var(--red)"></i>Attacker</span><span><i style="background:#ff8ba0"></i>Bait taken</span><span><i style="background:#2a3442"></i>Bait waiting</span></div></div>
+    <svg id="graph" viewBox="0 0 900 430" width="100%" style="display:block"></svg></div>
+   <div class="card" id="incard"></div>
+  </div>
+  <div class="card"><div class="ch"><h3>Live detections</h3><span class="sub" id="fc"></span></div>
+   <table><thead><tr><th>Severity</th><th>Time</th><th>Source</th><th>Technique</th><th>Bait</th></tr></thead><tbody id="feed"></tbody></table></div>
  </div>
+
+ <div class="view" id="v-incidents"><div class="g">
+  <div class="card"><div class="ch"><h3>Incidents</h3><div class="grow"></div><select id="if" style="background:var(--p2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 10px"><option value="open">Open</option><option value="handled">Handled</option><option value="all">All</option></select></div>
+   <table><thead><tr><th>Severity</th><th>Source</th><th>Baits</th><th>Score</th><th>Last seen</th></tr></thead><tbody id="ilist"></tbody></table></div>
+  <div class="card" id="incard2"></div></div></div>
+
+ <div class="view" id="v-baits"><div class="card"><div class="bar"><input id="bq" placeholder="Search baits"></div>
+  <table><thead><tr><th>Status</th><th>Bait file</th><th>Logins</th><th>Belongs on</th><th>Planted at</th></tr></thead><tbody id="blist"></tbody></table></div></div>
+
+ <div class="view" id="v-integrations"><div class="integ" id="integ"></div></div>
 </div>
-<div class="cmdbar">
- <button class="tb-btn primary" id="test-btn" title="Fires one real bait login at this listener and waits for the alert">Run test</button>
- <details class="menu"><summary class="tb-btn">Export</summary><div class="items"><a href="/api/export?fmt=csv">Alerts, CSV</a><a href="/api/export?fmt=json">Alerts, JSON</a></div></details>
- <button class="tb-btn" id="ack-all" title="Marks every open incident as handled">Mark all handled</button>
- <div class="cmd-status" id="cmd-status"></div>
- <div class="spacer"></div>
- <div class="refresh">v__VERSION__ · runs on this computer only</div>
-</div>
-<div class="strip demo" id="s-demo" hidden><b>DEMO MODE.</b> A pretend attacker is using the baits on this computer so you can see the console at work. Nothing real happened. Your real console opens with <code>lure listen --ui</code>.</div>
-<div class="strip alarm" id="s-alarm" hidden></div>
-<div class="strip upd" id="s-upd" hidden></div>
-<div class="modules">
- <div class="mod" id="m-listen"><div class="mod-h"><div class="mod-name">Listener</div><div class="st ok" id="m-listen-st">ACTIVE</div></div>
-  <div class="mod-desc">Answers the logins written in the baits. Nothing legitimate logs in here, so any login is a signal.</div>
-  <div class="mod-m">Address: <span id="m-host">—</span></div><div class="mod-m">Ports: <span id="m-ports">—</span></div></div>
- <div class="mod" id="m-baits"><div class="mod-h"><div class="mod-name">Bait set</div><div class="st ok" id="m-baits-st">ARMED</div></div>
-  <div class="mod-desc">Fake files holding fake logins. Opening, copying or scanning them does nothing. Only using a login alerts.</div>
-  <div class="mod-m">Files: <span id="m-files">—</span> · logins: <span id="m-logins">—</span></div><div class="mod-m">Profile: <span id="m-profile">—</span></div></div>
- <div class="mod" id="m-chan"><div class="mod-h"><div class="mod-name">Alert delivery</div><div class="st ok" id="m-chan-st">—</div></div>
-  <div class="mod-desc">Where a new incident is sent the moment it happens.</div>
-  <div class="mod-m">Channels: <span id="m-chans">—</span></div><div class="mod-m">Log: <span>alerts.jsonl next to the manifest</span></div></div>
- <div class="mod" id="m-upd"><div class="mod-h"><div class="mod-name">Software</div><div class="st ok" id="m-upd-st">CURRENT</div></div>
-  <div class="mod-desc">Updates are offered, never installed for you. You review the change and approve it.</div>
-  <div class="mod-m">Version: <span>__VERSION__</span></div><div class="mod-m">Update: <span id="m-updv">none waiting</span></div></div>
-</div>
-<div class="stats">
- <div class="stat"><div class="stat-l">Open incidents</div><div class="stat-v" id="s-open">0</div></div>
- <div class="stat"><div class="stat-l">Bait logins used</div><div class="stat-v blue" id="s-used">0</div></div>
- <div class="stat"><div class="stat-l">Unique sources</div><div class="stat-v" id="s-ips">0</div></div>
- <div class="stat"><div class="stat-l">Last hour</div><div class="stat-v green" id="s-hour">0</div></div>
- <div class="stat"><div class="stat-l">Monitoring since</div><div class="stat-v yellow" id="s-since">—</div></div>
-</div>
-<div class="tabs">
- <button class="tab on" data-t="feed">Live alert feed</button>
- <button class="tab" data-t="inc">Incidents<span class="cnt" id="t-cnt" hidden></span></button>
- <button class="tab" data-t="baits">Baits</button>
- <button class="tab" data-t="integ">Integrations</button>
-</div>
-<div class="panel on" id="p-feed">
- <div class="sec-h"><div class="sec-t">Bait use and listener contact</div><div class="badge" id="f-count">0 alerts</div></div>
- <div class="toolbar"><select id="f-sev"><option value="">All severities</option><option value="high">High only</option><option value="medium">Medium only</option></select>
-  <input id="f-q" type="search" placeholder="Filter: IP, bait, service, technique"><button class="tb-btn" id="f-clear">Clear filters</button></div>
- <table><thead><tr><th>Time (UTC)</th><th>Source IP</th><th>Service</th><th>Severity</th><th>What happened</th><th title="MITRE ATT&amp;CK technique the attempt shows">ATT&amp;CK</th><th>Status</th></tr></thead><tbody id="feed"></tbody></table>
-</div>
-<div class="panel" id="p-inc">
- <div class="sec-h"><div class="sec-t">Incidents, one per source</div><div class="badge" id="i-count">0</div></div>
- <div class="split">
-  <div><div class="toolbar"><select id="i-f"><option value="open">Open</option><option value="handled">Handled</option><option value="all">All</option></select></div>
-   <table><thead><tr><th>Source</th><th>Baits</th><th>Last seen</th><th>Status</th></tr></thead><tbody id="ilist"></tbody></table></div>
-  <div class="detail" id="idetail"></div>
- </div>
-</div>
-<div class="panel" id="p-baits">
- <div class="sec-h"><div class="sec-t">Bait inventory</div><div class="badge" id="b-count">0 files</div></div>
- <div class="toolbar"><input id="b-q" type="search" placeholder="Filter: file name or location"></div>
- <table><thead><tr><th>File</th><th>Logins</th><th>Where it belongs</th><th>Planted at</th><th>Status</th></tr></thead><tbody id="blist"></tbody></table>
-</div>
-<div class="panel" id="p-integ"><div class="cards" id="integ"></div></div>
+<div class="toast" id="toast" hidden></div>
 <script>
 var ST=null,SEL=null;
+var TAC={"T1552.001":"Credential Access","T1555.003":"Credential Access","T1021.001":"Lateral Movement","T1133":"Initial Access","T1078":"Initial Access","T1078.004":"Initial Access","T1046":"Discovery"};
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=String(x);return e;}
-function td(c,x){return el('td',c,x);}
-function ip(src){return (src||'').replace(/:\d+$/,'');}
-function ago(t){if(!t)return '—';var s=(Date.now()-Date.parse(t))/1000;if(s<60)return 'just now';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';}
-function ts(t){return (t||'').replace('T',' ').slice(0,19);}
-function status(msg,cls){var c=document.getElementById('cmd-status');c.textContent=msg;c.className='cmd-status '+(cls||'');}
-document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){go(b.dataset.t);};});
-function go(t){document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('on',x.dataset.t===t);});document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('on',p.id==='p-'+t);});}
-['f-sev','f-q','b-q','i-f'].forEach(function(id){document.getElementById(id).oninput=function(){if(ST)render(ST);};});
-document.getElementById('f-clear').onclick=function(){document.getElementById('f-sev').value='';document.getElementById('f-q').value='';render(ST);};
-function sevOf(a){if(a.demo)return 'DEMO';if(a.acknowledged)return 'DONE';return a.severity==='high'?'HIGH':'MEDIUM';}
-function render(st){ST=st;document.getElementById('refresh').textContent='updated '+new Date().toLocaleTimeString();
- var alerts=st.alerts||[],inc=st.incidents||[],open=inc.filter(function(i){return !i.handled;}),files=st.files||[],ch=st.channels||{},L=st.listening||{},P=L.ports||{};
- var pill=document.getElementById('pill'),pt=document.getElementById('pill-t');
- if(st.demo){pill.className='pill demo';pt.textContent='DEMO';}else if(open.length){pill.className='pill bad';pt.textContent=open.length+' OPEN INCIDENT'+(open.length>1?'S':'');}else{pill.className='pill ok';pt.textContent='ALL QUIET';}
- document.getElementById('h-host').textContent=L.listener||'—';
- document.getElementById('s-demo').hidden=!st.demo;document.getElementById('test-btn').disabled=!!st.demo;
- var sa=document.getElementById('s-alarm');sa.hidden=!(open.length&&!st.demo);
- if(open.length&&!st.demo){var i0=open[0];sa.textContent='';sa.appendChild(el('b',null,'BAIT USED. '));sa.appendChild(document.createTextNode(i0.from.charAt(0).toUpperCase()+i0.from.slice(1)+' tried '+i0.baits+' bait login'+(i0.baits===1?'':'s')+' '+ago(i0.last)+'. '));var lk=el('button','row-btn','Open incident');lk.onclick=function(){SEL=i0.source;go('inc');render(ST);};sa.appendChild(lk);}
- var su=document.getElementById('s-upd');su.hidden=!st.update;if(st.update){su.textContent='';su.appendChild(el('b',null,'UPDATE '+st.update+' AVAILABLE. '));su.appendChild(document.createTextNode('Nothing installs without you. Run '));su.appendChild(el('code',null,'lure update'));su.appendChild(document.createTextNode(' to read the changes and approve.'));}
- document.getElementById('m-host').textContent=L.listener||'—';
- document.getElementById('m-ports').textContent=[P.rdp?'RDP '+P.rdp:null,P.http?'HTTP '+P.http:null,(P.openvpn||[]).length?'VPN '+P.openvpn.join(','):null].filter(Boolean).join(' · ')||'—';
- var used=files.filter(function(f){return f.used;}).length,logins=files.reduce(function(n,f){return n+f.logins;},0);
- document.getElementById('m-files').textContent=files.length;document.getElementById('m-logins').textContent=logins;document.getElementById('m-profile').textContent=st.profile||'—';
- var bs=document.getElementById('m-baits-st'),bm=document.getElementById('m-baits');bs.textContent=used?used+' USED':'ARMED';bs.className='st '+(used?'bad':'ok');bm.className='mod'+(used?' bad':'');
- var names=[];if(ch.desktop)names.push('popup');if(ch.email)names.push('email');if(ch.webhook)names.push(ch.webhook);if(ch.syslog)names.push('syslog');
- document.getElementById('m-chans').textContent=['console'].concat(names).join(', ');
- var cs=document.getElementById('m-chan-st'),cm=document.getElementById('m-chan');cs.textContent=names.length?names.length+1+' ON':'CONSOLE ONLY';cs.className='st '+(names.length?'ok':'warn');cm.className='mod'+(names.length?'':' warn');
- var us=document.getElementById('m-upd-st');us.textContent=st.update?'UPDATE READY':'CURRENT';us.className='st '+(st.update?'warn':'ok');document.getElementById('m-upd').className='mod'+(st.update?' warn':'');document.getElementById('m-updv').textContent=st.update?st.update+' waiting for your approval':'none waiting';
- var so=document.getElementById('s-open');so.textContent=open.length;so.className='stat-v '+(open.length?'red':'green');
- document.getElementById('s-used').textContent=alerts.filter(function(a){return a.severity==='high';}).length;
- document.getElementById('s-ips').textContent=inc.length;
- document.getElementById('s-hour').textContent=alerts.filter(function(a){return Date.now()-Date.parse(a.time)<3600000;}).length;
- document.getElementById('s-since').textContent=ts(st.since).slice(0,16)+' UTC';
- var tc=document.getElementById('t-cnt');tc.hidden=!open.length;tc.textContent=open.length;
- feed(alerts);incidents(inc);baits(files);integ(ch);}
-function feed(alerts){var sev=document.getElementById('f-sev').value,q=document.getElementById('f-q').value.toLowerCase(),tb=document.getElementById('feed');tb.textContent='';
- var rows=alerts.filter(function(a){var x=a.explain||{};return (!sev||a.severity===sev)&&(!q||[a.source,a.bait_file,a.service,x.attack,x.how,a.username].join(' ').toLowerCase().indexOf(q)>=0);});
- document.getElementById('f-count').textContent=rows.length+' alert'+(rows.length===1?'':'s');
- if(!rows.length){var r=el('tr','empty'),c=td(null,alerts.length?'No alert matches these filters.':'No alerts yet. Lure stays silent until someone uses a bait login. Press Run test to see one arrive.');c.colSpan=7;r.appendChild(c);tb.appendChild(r);return;}
- rows.forEach(function(a){var x=a.explain||{},r=el('tr','click');r.onclick=function(){SEL=ip(a.source);go('inc');render(ST);};
-  r.appendChild(td('t-time',ts(a.time)));r.appendChild(td('t-ip',ip(a.source)));var s=td();s.appendChild(el('span','proto',a.service));r.appendChild(s);
-  var v=td();v.appendChild(el('span','sev '+(a.severity==='high'?'HIGH':'MEDIUM'),a.severity));r.appendChild(v);
-  var w=td('what');w.appendChild(document.createTextNode(x.how||''));if(a.location||a.planted_on)w.appendChild(el('small',null,'bait: '+(a.bait_file||'')+(a.location?' · planted at '+a.location:'')));r.appendChild(w);
-  var t=td('tech');t.appendChild(document.createTextNode(x.attack||''));t.appendChild(el('small',null,x.attack_name||''));r.appendChild(t);
-  var st=td();st.appendChild(el('span','sev '+sevOf(a),a.demo?'demo':(a.acknowledged?'handled':'open')));r.appendChild(st);tb.appendChild(r);});}
-function incidents(all){var f=document.getElementById('i-f').value,tb=document.getElementById('ilist');tb.textContent='';
- var list=all.filter(function(i){return f==='all'||(f==='open'?!i.handled:i.handled);});document.getElementById('i-count').textContent=list.length;
- if(!SEL||!all.some(function(i){return i.source===SEL;}))SEL=list.length?list[0].source:null;
- if(!list.length){var r=el('tr','empty'),c=td(null,f==='open'?'No open incidents. You are all caught up.':'Nothing here yet.');c.colSpan=4;r.appendChild(c);tb.appendChild(r);}
- list.forEach(function(i){var r=el('tr','click'+(i.source===SEL?' sel':''));r.onclick=function(){SEL=i.source;render(ST);};
-  var c=td();c.appendChild(el('div','t-ip',i.source));c.appendChild(el('div','t-time',i.from));r.appendChild(c);r.appendChild(td(null,i.baits));r.appendChild(td('t-time',ago(i.last)));
-  var s=td();s.appendChild(el('span','sev '+(i.demo?'DEMO':(i.handled?'DONE':(i.severity==='high'?'HIGH':'MEDIUM'))),i.demo?'demo':(i.handled?'handled':'open')));r.appendChild(s);tb.appendChild(r);});
- var d=document.getElementById('idetail');d.textContent='';var i=all.filter(function(x){return x.source===SEL;})[0];
- if(!i){var e=el('div','d-sec');e.appendChild(el('div','sec-t','Select an incident to see what happened and what to do.'));d.appendChild(e);return;}
- var h=el('div','d-h'),g=el('div','grow');g.appendChild(el('h3',null,(i.demo?'Demo: ':'')+(i.severity==='high'?i.baits+' bait login'+(i.baits===1?'':'s')+' used from '+i.source:'Listener touched by '+i.source)));g.appendChild(el('div','sub',i.who));h.appendChild(g);
- h.appendChild(el('span','sev '+(i.demo?'DEMO':(i.handled?'DONE':'HIGH')),i.demo?'demo':(i.handled?'handled':'open')));d.appendChild(h);
- var kv=el('div','kv');[['Source',i.source],['First seen',ts(i.first).slice(11)+' UTC'],['Last seen',ago(i.last)],['Attempts',i.steps.length]].forEach(function(p){var c=el('div');c.appendChild(el('div','k',p[0]));c.appendChild(el('div','v',p[1]));kv.appendChild(c);});d.appendChild(kv);
- var s1=el('div','d-sec');s1.appendChild(el('div','d-t','Attack chain'));var ch=el('div','chain');
- i.steps.forEach(function(s){var r=el('div','step');r.appendChild(el('span','tm',ts(s.time).slice(11)));r.appendChild(el('span','nd'));var tx=el('span','tx',s.how);if(s.attack)tx.appendChild(el('span','tech',s.attack));r.appendChild(tx);ch.appendChild(r);});s1.appendChild(ch);d.appendChild(s1);
- var s2=el('div','d-sec');s2.appendChild(el('div','d-t','Response checklist'));var td2=el('div','todo');i.next.forEach(function(n){var l=el('label'),cb=el('input');cb.type='checkbox';l.appendChild(cb);l.appendChild(el('span',null,n));td2.appendChild(l);});s2.appendChild(td2);d.appendChild(s2);
- if(!i.handled){var a=el('div','act'),b=el('button','tb-btn primary','Mark incident handled');b.onclick=function(){ack(i.ids);};a.appendChild(b);d.appendChild(a);}}
-function baits(files){var q=document.getElementById('b-q').value.toLowerCase(),tb=document.getElementById('blist');tb.textContent='';
- var rows=files.filter(function(f){return !q||(f.file+' '+(f.plant_on||'')+' '+(f.location||'')).toLowerCase().indexOf(q)>=0;});document.getElementById('b-count').textContent=files.length+' files';
- rows.forEach(function(f){var r=el('tr');r.appendChild(td('t-ip',f.file));r.appendChild(td(null,f.logins));r.appendChild(td('what',f.plant_on||''));r.appendChild(td('t-time',f.location||'not recorded (lure record)'));
-  var s=td();s.appendChild(el('span','sev '+(f.used?'HIGH':(f.retired?'DONE':'OK')),f.used?'used':(f.retired?'retired':'untouched')));r.appendChild(s);tb.appendChild(r);});}
-function integ(ch){var box=document.getElementById('integ');box.textContent='';
- [['Console','This page. Always on.',true],['Desktop popup',ch.desktop?'Shows each alert on this computer.':'Add --desktop to lure listen.',ch.desktop],
-  ['Email',ch.email?'Sends to '+ch.email+'.':'Add --email-to you@gmail.com and set LURE_SMTP_PASSWORD to an app password.',ch.email],
-  ['Phone and chat',ch.webhook?'Sends to '+ch.webhook+'.':'Add --webhook with an ntfy, Telegram, Discord, Slack or Teams link.',ch.webhook],
-  ['Syslog and SIEM',ch.syslog?'Sends to your syslog server.':'Add --syslog HOST:514.',ch.syslog],
-  ['AI agents (MCP)','Run lure mcp to let an AI agent read alerts and manage baits.',false]].forEach(function(x){var c=el('div','card'),r=el('div','row');r.appendChild(el('h4',null,x[0]));r.appendChild(el('span','st '+(x[2]?'ok':'off'),x[2]?'ON':'OFF'));c.appendChild(r);c.appendChild(el('p',null,x[1]));box.appendChild(c);});}
-function load(){fetch('/api/state').then(function(r){return r.json();}).then(render).catch(function(){var p=document.getElementById('pill');p.className='pill bad';document.getElementById('pill-t').textContent='LISTENER OFFLINE';});}
+function sv(n,a){return document.createElementNS('http://www.w3.org/2000/svg',n);}
+function attr(e,o){for(var k in o)e.setAttribute(k,o[k]);return e;}
+function ago(t){if(!t)return '—';var s=(Date.now()-Date.parse(t))/1000;if(s<60)return 'now';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return Math.round(s/3600)+'h';return Math.round(s/86400)+'d';}
+function hms(t){return (t||'').slice(11,19);}
+function score(i){if(i.severity!=='high')return 25;return Math.min(99,48+i.baits*13+(i.steps.length>2?6:0));}
+function toast(m,c){var t=document.getElementById('toast');t.textContent=m;t.className='toast '+(c||'');t.hidden=false;clearTimeout(t._h);t._h=setTimeout(function(){t.hidden=true;},5000);}
+document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){go(b.dataset.v);};});
+function go(v){document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x.dataset.v===v);});document.querySelectorAll('.view').forEach(function(x){x.classList.toggle('on',x.id==='v-'+v);});}
+document.getElementById('if').onchange=function(){render(ST);};document.getElementById('bq').oninput=function(){render(ST);};
+function render(st){ST=st;var inc=st.incidents||[],open=inc.filter(function(i){return !i.handled;}),files=st.files||[],alerts=st.alerts||[];
+ document.getElementById('host').textContent=(st.listening||{}).listener||'—';
+ var band=document.getElementById('band'),bc=document.getElementById('beacon'),taken=files.filter(function(f){return f.used;}).length,top=open[0];
+ var maxs=open.reduce(function(m,i){return Math.max(m,score(i));},0);
+ if(st.demo){band.className='band demo';bc.style.setProperty('--c','var(--amber)');document.getElementById('b-k').textContent='DEMO MODE';document.getElementById('b-v').textContent='SIMULATED INTRUSION';document.getElementById('b-s').textContent='A pretend attacker on this computer. Nothing real happened.';}
+ else if(open.length){band.className='band attack';bc.style.setProperty('--c','var(--red)');document.getElementById('b-k').textContent='STATUS';document.getElementById('b-v').textContent='INTRUSION IN PROGRESS';document.getElementById('b-s').textContent=top.from.charAt(0).toUpperCase()+top.from.slice(1)+' took '+top.baits+' bait'+(top.baits===1?'':'s')+' · '+ago(top.last)+' ago';}
+ else{band.className='band secure';bc.style.setProperty('--c','var(--green)');document.getElementById('b-k').textContent='STATUS';document.getElementById('b-v').textContent='SECURE';document.getElementById('b-s').textContent=files.length+' baits armed · nothing touched'+(inc.length?' since the last incident was handled':'');}
+ var k1=document.getElementById('k1');k1.textContent=open.length;k1.className='v '+(open.length?'r':'g');
+ document.getElementById('k2').textContent=taken+'/'+files.length;var k3=document.getElementById('k3');k3.textContent=maxs;k3.className='v '+(maxs>=70?'r':(maxs?'':'g'));
+ document.getElementById('k4').textContent=(st.since||'').slice(11,16)+' UTC';
+ var nb=document.getElementById('nb');nb.hidden=!open.length;nb.textContent=open.length;
+ document.getElementById('test').disabled=!!st.demo;
+ var u=document.getElementById('upd');u.hidden=!st.update;if(st.update){u.textContent='';u.appendChild(el('b',null,'Update '+st.update));u.appendChild(document.createTextNode(' is ready. It installs only when you approve it: run '));u.appendChild(el('code',null,'lure update'));}
+ if(!SEL||!inc.some(function(i){return i.source===SEL;}))SEL=(open[0]||inc[0]||{}).source||null;
+ graph(inc,files);incCard(document.getElementById('incard'),inc);incCard(document.getElementById('incard2'),inc);feed(alerts);ilist(inc);baits(files);integ(st.channels||{});}
+function graph(inc,files){var g=document.getElementById('graph');while(g.firstChild)g.removeChild(g.firstChild);
+ var defs=sv('defs');defs.innerHTML='<radialGradient id="ga"><stop offset="0" stop-color="#ff3b5c" stop-opacity=".55"/><stop offset="1" stop-color="#ff3b5c" stop-opacity="0"/></radialGradient><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#ff3b5c"/></marker>';g.appendChild(defs);
+ var att=inc.filter(function(i){return i.severity==='high';}).slice(0,4),W=900,H=430;
+ if(!files.length)return;
+ var cx=560,cy=H/2,R=175,n=files.length,pos={};
+ files.forEach(function(f,k){var a=(-70+140*(n===1?0.5:k/(n-1)))*Math.PI/180;pos[f.file]={x:cx+R*Math.cos(a)*1.0-60,y:cy+R*Math.sin(a)*1.15};});
+ var ax=110;att.forEach(function(i,k){var y=att.length===1?cy:60+k*((H-120)/(att.length-1||1));i._x=ax;i._y=y;});
+ // edges
+ att.forEach(function(i){var seen={},ord=0;i.steps.forEach(function(s){if(!s.bait||seen[s.bait]||!pos[s.bait])return;seen[s.bait]=1;ord++;var p=pos[s.bait];
+  var mx=(i._x+p.x)/2,path=sv('path');attr(path,{d:'M'+(i._x+22)+' '+i._y+' C '+mx+' '+i._y+', '+mx+' '+p.y+', '+(p.x-16)+' '+p.y,fill:'none',stroke:i.handled?'#3a4452':'#ff3b5c','stroke-width':2,'marker-end':i.handled?'':'url(#ar)','class':i.handled?'':'flow',opacity:i.handled?.6:.9});g.appendChild(path);
+  var bx=mx,by=(i._y+p.y)/2,c=sv('circle');attr(c,{cx:bx,cy:by,r:10,fill:'#0B0F14',stroke:'#ff3b5c','stroke-width':1.5});g.appendChild(c);var t=sv('text');attr(t,{x:bx,y:by+4,'text-anchor':'middle','font-size':11,'font-weight':700,fill:'#ff8ba0'});t.textContent=ord;g.appendChild(t);});});
+ // bait nodes
+ files.forEach(function(f){var p=pos[f.file],c=sv('circle');attr(c,{cx:p.x,cy:p.y,r:f.used?13:9,fill:f.used?'#ff3b5c':'#1a222d',stroke:f.used?'#ff8ba0':'#2a3442','stroke-width':2});g.appendChild(c);
+  var t=sv('text'),name=f.file.length>30?f.file.slice(0,28)+'…':f.file;attr(t,{x:p.x+20,y:p.y+4,'font-size':12,fill:f.used?'#E8EDF2':'#5c6876','font-weight':f.used?600:400});t.textContent=name;g.appendChild(t);});
+ // attackers
+ if(!att.length){var t=sv('text');attr(t,{x:150,y:cy-6,'font-size':18,'font-weight':700,fill:'#22D38A','text-anchor':'middle'});t.textContent='No attacker';g.appendChild(t);var t2=sv('text');attr(t2,{x:150,y:cy+16,'font-size':12,fill:'#7D8896','text-anchor':'middle'});t2.textContent='All baits waiting';g.appendChild(t2);return;}
+ att.forEach(function(i){var halo=sv('circle');attr(halo,{cx:i._x,cy:i._y,r:46,fill:'url(#ga)','class':i.handled?'':'pulse'});if(!i.handled)g.appendChild(halo);
+  var c=sv('circle');attr(c,{cx:i._x,cy:i._y,r:22,fill:i.handled?'#2a3442':'#ff3b5c',stroke:'#ffd0d8','stroke-width':2});g.appendChild(c);
+  var t=sv('text');attr(t,{x:i._x,y:i._y+42,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#E8EDF2'});t.textContent=i.source;g.appendChild(t);
+  var t2=sv('text');attr(t2,{x:i._x,y:i._y+57,'text-anchor':'middle','font-size':11,fill:'#7D8896'});t2.textContent=i.demo?'demo attacker':i.from;g.appendChild(t2);});}
+function tactics(i){var t={},q={};i.steps.forEach(function(s){if(s.attack){q[s.attack]=1;if(TAC[s.attack])t[TAC[s.attack]]=1;}});return {t:Object.keys(t),q:Object.keys(q)};}
+function incCard(box,inc){box.textContent='';var i=inc.filter(function(x){return x.source===SEL;})[0];
+ var h=el('div','ch');h.appendChild(el('h3',null,'Incident'));box.appendChild(h);
+ if(!i){var n=el('div','none');n.appendChild(el('div','ok','✓'));n.appendChild(el('b',null,'No incidents'));n.appendChild(document.createTextNode('Press Run attack test to see a detection end to end.'));box.appendChild(n);return;}
+ var p=el('div','ip'),hd=el('div','ih'),s=score(i),col=i.handled?'#4A5562':(s>=70?'#FF3B5C':'#FFB020');
+ var d=el('div','dial'),C=2*Math.PI*36,svg='<svg width="84" height="84"><circle cx="42" cy="42" r="36" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="7"/><circle cx="42" cy="42" r="36" fill="none" stroke="'+col+'" stroke-width="7" stroke-linecap="round" stroke-dasharray="'+(C*s/100)+' '+C+'"/></svg>';d.innerHTML=svg;var nn=el('div','n');nn.appendChild(document.createTextNode(s));nn.appendChild(el('small',null,'SCORE'));nn.style.color=col;d.appendChild(nn);hd.appendChild(d);
+ var tt=el('div');tt.appendChild(el('div','t',(i.demo?'Demo · ':'')+(i.handled?'Handled · ':'')+i.baits+' bait'+(i.baits===1?'':'s')+' taken'));tt.appendChild(el('div','w',i.who));hd.appendChild(tt);p.appendChild(hd);
+ var tx=tactics(i),tg=el('div','tags');tx.t.forEach(function(x){tg.appendChild(el('span','tag',x));});tx.q.forEach(function(x){tg.appendChild(el('span','tag t',x));});p.appendChild(tg);
+ var tl=el('div');tl.appendChild(el('div','lbl','Storyline'));var l=el('div','tl');i.steps.forEach(function(st){var r=el('div','ts');r.appendChild(el('span','tm mono',hms(st.time)));r.appendChild(el('span','d'));var x=el('div','x');x.appendChild(el('b',null,(st.bait||'listener')+' '));x.appendChild(el('span',null,'· '+(st.service||'').toUpperCase()));x.appendChild(el('div','more',st.how));r.appendChild(x);r.onclick=function(){r.classList.toggle('open');};l.appendChild(r);});tl.appendChild(l);p.appendChild(tl);
+ var rs=el('div');rs.appendChild(el('div','lbl','Respond'));var stp=el('div','steps');i.next.forEach(function(n){var lb=el('label'),cb=el('input');cb.type='checkbox';lb.appendChild(cb);lb.appendChild(el('span',null,n));stp.appendChild(lb);});rs.appendChild(stp);p.appendChild(rs);
+ if(!i.handled){var a=el('div','acts'),b=el('button','btn red','Mark handled');b.onclick=function(){post('/api/ack',{ids:i.ids}).then(function(){toast('Incident from '+i.source+' marked handled.','ok');load();});};a.appendChild(b);p.appendChild(a);}
+ box.appendChild(p);}
+function sevCell(a){var s=el('span','sv '+(a.acknowledged?'d':(a.severity==='high'?'c':'m')));s.appendChild(el('i'));s.appendChild(document.createTextNode(a.demo?'DEMO':(a.acknowledged?'HANDLED':(a.severity==='high'?'CRITICAL':'MEDIUM'))));return s;}
+function feed(alerts){var tb=document.getElementById('feed');tb.textContent='';document.getElementById('fc').textContent=alerts.length+' total';
+ if(!alerts.length){var r=el('tr'),c=el('td','none','No detections yet.');c.colSpan=5;r.appendChild(c);tb.appendChild(r);return;}
+ alerts.slice(0,12).forEach(function(a){var x=a.explain||{},r=el('tr','r');r.onclick=function(){SEL=a.source.replace(/:\d+$/,'');render(ST);};
+  var c=el('td');c.appendChild(sevCell(a));r.appendChild(c);r.appendChild(el('td','mono sm',hms(a.time)));r.appendChild(el('td','ipx mono',a.source.replace(/:\d+$/,'')));
+  var t=el('td');t.appendChild(el('span','tag t',x.attack||''));t.appendChild(document.createTextNode(' '+(TAC[x.attack]||'')));r.appendChild(t);r.appendChild(el('td','f',a.bait_file||'listener'));tb.appendChild(r);});}
+function ilist(inc){var f=document.getElementById('if').value,tb=document.getElementById('ilist');tb.textContent='';var l=inc.filter(function(i){return f==='all'||(f==='open'?!i.handled:i.handled);});
+ if(!l.length){var r=el('tr'),c=el('td','none',f==='open'?'No open incidents.':'Nothing here.');c.colSpan=5;r.appendChild(c);tb.appendChild(r);}
+ l.forEach(function(i){var r=el('tr','r');r.onclick=function(){SEL=i.source;render(ST);};var c=el('td');c.appendChild(sevCell({severity:i.severity,acknowledged:i.handled,demo:i.demo}));r.appendChild(c);
+  r.appendChild(el('td','ipx mono',i.source));r.appendChild(el('td',null,i.baits));r.appendChild(el('td',null,score(i)));r.appendChild(el('td','sm',ago(i.last)));tb.appendChild(r);});}
+function baits(files){var q=document.getElementById('bq').value.toLowerCase(),tb=document.getElementById('blist');tb.textContent='';
+ files.filter(function(f){return !q||(f.file+(f.plant_on||'')+(f.location||'')).toLowerCase().indexOf(q)>=0;}).forEach(function(f){var r=el('tr'),c=el('td'),s=el('span','sv '+(f.used?'c':'d'));s.appendChild(el('i'));s.appendChild(document.createTextNode(f.used?'TAKEN':(f.retired?'RETIRED':'ARMED')));if(!f.used&&!f.retired){s.style.color='var(--green)';s.firstChild.style.background='var(--green)';}c.appendChild(s);r.appendChild(c);
+  r.appendChild(el('td','f',f.file));r.appendChild(el('td',null,f.logins));r.appendChild(el('td','sm',f.plant_on||''));r.appendChild(el('td','sm mono',f.location||'—'));tb.appendChild(r);});}
+function integ(ch){var b=document.getElementById('integ');b.textContent='';
+ [['Console','This page.',true,null],['Desktop popup','Alert on this computer.',ch.desktop,'--desktop'],['Email',ch.email||'Gmail or Outlook, with an app password.',ch.email,'--email-to you@gmail.com'],
+  ['Phone and chat',ch.webhook||'ntfy, Telegram, Discord, Slack or Teams.',ch.webhook,'--webhook https://ntfy.sh/your-topic'],['SIEM','Syslog to your collector.',ch.syslog,'--syslog 10.0.0.5:514'],['AI agents','Let an agent read alerts and manage baits.',false,'lure mcp']]
+ .forEach(function(x){var c=el('div','ic'),h=el('div','h');h.appendChild(el('b',null,x[0]));h.appendChild(el('span','on-chip '+(x[2]?'y':'n'),x[2]?'ON':'OFF'));c.appendChild(h);c.appendChild(el('div','sm',x[1]));if(!x[2]&&x[3])c.appendChild(el('code',null,x[3]));b.appendChild(c);});}
+function load(){fetch('/api/state').then(function(r){return r.json();}).then(render).catch(function(){});}
 function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});}
-function ack(ids){post('/api/ack',{ids:ids}).then(load);}
-document.getElementById('ack-all').onclick=function(){var ids=[];(ST.incidents||[]).forEach(function(i){if(!i.handled)ids=ids.concat(i.ids);});if(!ids.length){status('Nothing open to mark.','');return;}ack(ids);status('Marked '+ids.length+' alert'+(ids.length===1?'':'s')+' handled.','ok');};
-document.getElementById('test-btn').onclick=function(){var b=this;b.disabled=true;status('Firing a bait login at the listener...','');var before=(ST.alerts||[]).length,t0=Date.now();
- post('/api/test').then(function(r){if(!r.ok)throw 0;var iv=setInterval(function(){fetch('/api/state').then(function(x){return x.json();}).then(function(s){render(s);if((s.alerts||[]).length>before){clearInterval(iv);status('Test passed: alert arrived in '+((Date.now()-t0)/1000).toFixed(1)+' s.','ok');b.disabled=false;}else if(Date.now()-t0>10000){clearInterval(iv);status('No new alert within 10 s. A repeat test within 10 minutes is folded into the earlier alert; otherwise check the listener ports and firewall.','bad');b.disabled=false;}});},700);})
- .catch(function(){status('Test is not available here.','bad');b.disabled=false;});};
+document.getElementById('test').onclick=function(){var b=this,before=(ST.alerts||[]).length,t0=Date.now();b.disabled=true;b.textContent='Attacking…';
+ post('/api/test').then(function(r){if(!r.ok)throw 0;var iv=setInterval(function(){fetch('/api/state').then(function(x){return x.json();}).then(function(s){render(s);
+  if((s.alerts||[]).length>before){clearInterval(iv);toast('Detected in '+((Date.now()-t0)/1000).toFixed(1)+' s. The test attack is in the graph.','ok');done();}else if(Date.now()-t0>10000){clearInterval(iv);toast('No new detection in 10 s. A repeat within 10 minutes is merged into the earlier alert.','bad');done();}});},600);})
+ .catch(function(){toast('Attack test is not available here.','bad');done();});function done(){b.disabled=false;b.textContent='Run attack test';}};
 if(location.hash)go(location.hash.slice(1));
 load();setInterval(load,3000);
 </script></body></html>

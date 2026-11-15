@@ -2,7 +2,7 @@
 
 ## 0.1.0b3 (unreleased; release tag v0.1.0b3)
 Fixes from the founder's own test on Windows, 15 Nov 2026.
-- Dashboard rebuilt as an operator console in the SilentMesh engine's design: module health cards (listener, bait set, alert delivery, software), a stats bar, a live alert feed with MITRE ATT&CK technique per alert, incidents grouped per source with the attack chain and a response checklist, bait inventory, integrations, CSV and JSON export, Mark all handled, and Run test that fires a real bait login and times the alert. The score ring is gone.
+- Dashboard rebuilt as a SOC console: a status band that reads SECURE or INTRUSION IN PROGRESS at a glance, a live attack graph (attacker to every bait taken, numbered in order, animated), an incident panel with a threat score, MITRE tactics and techniques, a storyline and a response checklist, live detections, bait inventory, integrations, CSV and JSON export, and Run attack test that fires a real bait login and times the detection.
 - Every alert now says who (this computer, a device on your network, or the internet), what bait, how it was used, and what to do, in the dashboard, webhooks, email and popups.
 - Demo alerts are marked as demo everywhere, with a banner on the dashboard, so a demo can never look like a real attack.
 - Alerts without a webhook: `--desktop` popups on Windows, Linux and macOS, `--email-to` through your own Gmail or Outlook (app password from LURE_SMTP_PASSWORD, never saved), and readable ntfy push messages.

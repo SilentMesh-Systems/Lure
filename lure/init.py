@@ -14,11 +14,13 @@ import sys
 from .generate import generate
 
 
-def cmd(sub):
-    """How to run a Lure command on this machine: `lure` if installed, else via Python."""
-    if shutil.which("lure"):
-        return f"lure {sub}"
-    return f"{'py' if sys.platform == 'win32' else 'python3'} -m lure {sub}"
+def cmd(sub=None):
+    """How this user runs a Lure command: `lure` when installed, else through Python (py on Windows)."""
+    if os.path.basename(sys.argv[0]) in ("lure", "lure.exe", "silentmesh-lure") or shutil.which("lure"):
+        base = "lure"
+    else:
+        base = f"{'py' if sys.platform == 'win32' else 'python3'} -m lure"
+    return base if sub is None else f"{base} {sub}"
 
 
 def guide():
@@ -119,11 +121,13 @@ def init(out_dir="baits", listener=None, profile=None, out=print, ask=None, noti
         out(f"  saved to {path} (outside the bait folder, on purpose)")
     out("")
     out("Next:")
+    if host.startswith("127."):
+        out(f"note: no network address found, so these baits point at this machine only. Re-run with --listener <this machine's LAN IP> to catch use from other machines.")
     out(f"  1. Start the listener here, in this terminal:   {cmd(f'listen --manifest {manifest} --ui')}")
     out(f"  2. Prove it, from another terminal:             {cmd(f'test --manifest {manifest}')}")
     out(f"  3. Copy a bait or two to where an intruder would look (desktop, Documents, a shared folder), then tell Lure where:")
     example = next((f for f in files if f.endswith(".rdp")), files[0])
-    out(f"     {cmd('record')} \"{example}\" \"HOSTNAME:C:\\\\Users\\\\someone\\\\Desktop\"")
+    out(f"     {cmd('record')} \"{example}\" \"HOSTNAME:C:\\Users\\someone\\Desktop\"")
     out("")
     out(f"Keep {manifest} on this machine only; it maps usernames to baits (it holds no passwords).")
     if not ask:

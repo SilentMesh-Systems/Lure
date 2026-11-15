@@ -96,7 +96,7 @@ def create_bait_key(out_dir, manifest_path, aws_profile=None, user_name=None):
     creds = _load_credentials(aws_profile)
     user = user_name or "svc-backup-sync"
     _iam("CreateUser", {"UserName": user, "Tags.member.1.Key": "lure",
-                        "Tags.member.1.Value": "bait: no permissions, do not grant any"}, creds)
+                        "Tags.member.1.Value": "bait - no permissions - do not grant any"}, creds)
     xml = _iam("CreateAccessKey", {"UserName": user}, creds)
     key_id, secret = _between(xml, "AccessKeyId"), _between(xml, "SecretAccessKey")
     name = "aws credentials (backup job).txt"

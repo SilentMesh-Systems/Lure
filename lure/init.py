@@ -27,7 +27,7 @@ def guide():
     return f"""
 Three commands, one machine:
 
-  {cmd('demo'):<28}  see Lure catch a pretend attacker (nothing leaves this machine)
+  {cmd('demo'):<28}  see Lure catch a pretend attacker (the attack never leaves this machine)
   {cmd('init'):<28}  write real baits pointing at this machine; it asks two questions
   {cmd('listen --ui'):<28}  wait for someone to use one; the dashboard opens on http://127.0.0.1:8765
 
@@ -109,8 +109,12 @@ def init(out_dir="baits", listener=None, profile=None, out=print, ask=None, noti
     if listener is None and not port_free(3389):
         rdp_port = 13389
         out("Port 3389 is in use here (usually Windows Remote Desktop), so the RDP bait uses port 13389.")
+    domain = None
+    if ask and profile != "home":
+        answer = ask("Your organisation's email domain, so the bait email looks real (for example acme.co.in; Enter to skip): ").strip()
+        domain = answer.lstrip("@") if "." in answer and " " not in answer else None
     host = listener or my_ip()
-    m = generate(host, out_dir, profile=profile, rdp_port=rdp_port)
+    m = generate(host, out_dir, profile=profile, rdp_port=rdp_port, email_domain=domain)
     files = sorted({b["file"] for b in m["baits"]})
     out(f"wrote {len(files)} bait files to {out_dir}/, every login in them points at {host}")
     for f in files:
@@ -130,6 +134,7 @@ def init(out_dir="baits", listener=None, profile=None, out=print, ask=None, noti
     out(f"     {cmd('record')} \"{example}\" \"HOSTNAME:C:\\Users\\someone\\Desktop\"")
     out("")
     out(f"Keep {manifest} on this machine only; it maps usernames to baits (it holds no passwords).")
+    out("At work, tell your IT or security team before you plant baits on shared drives, so a bait alert is not mistaken for a real breach.")
     if not ask:
         out("Be told about alerts: add --desktop, --email-to ADDRESS or --webhook URL to `lure listen`.")
     return m

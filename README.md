@@ -27,7 +27,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 
 - **No agent, nothing on the control network.** Bait files go on IT-side machines: engineering workstations, jump hosts, vendor shares.
 - **Alerts on use, not on open.** Opening, copying, backing up or antivirus-scanning a bait file does nothing. Only a login attempt with a bait credential fires an alert.
-- **Your alerts go only to you.** The listener sends alerts to your own webhook, syslog or terminal. No SilentMesh service is involved, and nothing is sent to us.
+- **Your alerts go only to you.** The listener sends alerts to your own webhook, syslog, email or terminal. Alert contents, IP addresses and bait details are never sent to us. Lure does send anonymous usage statistics (see [Usage statistics](#usage-statistics)); turn them off with `LURE_NO_TELEMETRY=1`.
 - **Tested on Linux (x86-64 and ARM, including Raspberry Pi) and Windows,** Python 3.9 and newer, standard library only. macOS is not yet supported. Apache-2.0.
 
 ## Get started in three commands
@@ -35,7 +35,7 @@ Attackers often get in with a stolen VPN or jump-host login, then look for more 
 Install it with `pipx install --pip-args=--pre silentmesh-lure` (on Kali, Debian and Ubuntu plain `pip install` is refused; get pipx with `sudo apt install pipx`), or run it once with no install via `uvx silentmesh-lure`. From a cloned folder without installing, `python3 -m lure` works the same as `lure`. **On Windows**, type `py -m lure` wherever this page says `python3 -m lure`.
 
 ```
-lure demo          # 1. watch Lure catch a simulated attacker on this machine (nothing leaves it)
+lure demo          # 1. watch Lure catch a simulated attacker on this machine (the attack never leaves it)
 lure init          # 2. write real baits that point at this machine; it prints the next step
 lure listen --ui   # 3. wait for someone to use one; dashboard at http://127.0.0.1:8765
 ```
@@ -190,6 +190,22 @@ Every alert says, in plain words, **who** (this computer, a device on your netwo
 | Slack, Teams, a SIEM | `--webhook URL` (Slack blocks, Teams cards, plain JSON for anything else) or `--syslog HOST` |
 
 `lure init` asks which one you want and saves the answer in your own config folder (`%APPDATA%\lure` or `~/.config/lure`), never next to the baits.
+
+## Usage statistics
+
+Lure sends anonymous usage statistics so we can see which commands people use and fix what breaks. Each event carries only: the command (demo, init, listen, test...), the Lure version, the operating system and Python version, the bait profile name, and for each alert only its severity, its service (rdp, http, openvpn...) and whether it came from the demo. Each install gets a random ID that is not linked to you.
+
+Never sent: IP addresses, hostnames, usernames, bait file names or contents, alert details, webhook URLs or email addresses. The code is in `lure/telemetry.py`.
+
+Turn it off with `LURE_NO_TELEMETRY=1` (or the common `DO_NOT_TRACK=1`). Lure says this once, the first time it runs.
+
+## Still listening
+
+When an alert channel is set (`--desktop`, `--email-to` or `--webhook`), `lure listen` sends a short "Lure is listening" message when it starts and a "still listening" message every 7 days, saying whether any bait was used since the last one. Silence then never means "is it broken?". Change the interval with `--heartbeat-days`, or turn it off with `--heartbeat-days 0`.
+
+## At work: tell IT first
+
+Before you plant baits on shared or work drives, tell your IT or security team, so a bait alert is handled as a test or a real intrusion, not mistaken for one. `lure init` asks for your organisation's email domain so the bait email looks like your own mail; you can also pass `--email-domain` to `lure generate`.
 
 ## Updates: nothing installs without you
 

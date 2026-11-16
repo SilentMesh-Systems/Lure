@@ -1,6 +1,10 @@
 # Changelog
 
 ## 0.1.0b3 (unreleased; release tag v0.1.0b3)
+- Anonymous usage statistics (command, version, OS, alert severity and service only; never IPs, bait names or alert contents), on by default and stated on first run; off with LURE_NO_TELEMETRY=1 or DO_NOT_TRACK=1.
+- Weekly "still listening" message, plus one at start, to your alert channels; `--heartbeat-days` sets the interval, 0 turns it off.
+- Bait email uses your organisation's domain (`lure init` asks; `--email-domain` on generate) instead of the giveaway `<profile>-it.local`; rotate keeps it.
+- `lure init` reminds you to tell IT before planting baits on shared drives.
 Fixes from the founder's own test on Windows, 15 Nov 2026.
 - Dashboard rebuilt as an operator console in the SilentMesh console design: an incident queue with one incident per source, a detail pane (why it was flagged, timeline with ATT&CK technique, impact including what Lure cannot see, what to do, handling), a 24-hour histogram, live feed, bait inventory, integrations, CSV and JSON export, keyboard shortcuts, and Run test that fires a real bait login at your own listener. Fonts are bundled, so the dashboard makes no outside requests.
 - Every alert now says who (this computer, a device on your network, or the internet), what bait, how it was used, and what to do, in the dashboard, webhooks, email and popups.

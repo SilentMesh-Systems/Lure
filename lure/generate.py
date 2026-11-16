@@ -235,7 +235,7 @@ def _notes(path, rows, old_rows):
 
 
 def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile="it",
-             http_port=8080, rdp_port=3389, retired=None, dns_zone=None):
+             http_port=8080, rdp_port=3389, retired=None, dns_zone=None, email_domain=None):
     """Write a convincing bait set into out_dir and return the manifest.
 
     listener: the hostname or IP of the host running `lure listen`. Pick one
@@ -348,8 +348,10 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
     eu, epw = names.vendor(vendor), _password(p["words"])
     sent = (when + timedelta(days=_rng.randint(1, 20))).strftime("%a, %d %b %Y %H:%M:%S +0530")
     with open(os.path.join(out_dir, eml_name), "w", newline="\r\n") as f:
-        f.write(f"From: {person} <{person.lower()}@{profile}-it.local>\n"
-                f"To: {vendor} Support <support@{vendor.lower().split()[0]}.example>\n"
+        domain = (email_domain or "corp.local").strip().lstrip("@").lower()
+        slug = vendor.lower().split()[0]
+        f.write(f"From: {person} <{person.lower()}@{domain}>\n"
+                f"To: {vendor} Support <{slug}.support@{domain}>\n"
                 f"Subject: Re: {vendor} remote access\nDate: {sent}\n\n"
                 f"Hi,\n\nTemporary web login for your engineer until the VPN is sorted:\n\n"
                 f"  {web}/vendor\n  user: {eu}\n  pass: {epw}\n\n"
@@ -389,6 +391,7 @@ def generate(listener, out_dir, site="site", vpn_count=1, vpn_port=1194, profile
         "site": site,
         "profile": profile,
         "dns_zone": dns_zone,
+        "email_domain": email_domain,
         "ports": {"http": http_port, "rdp": rdp_port},
         "baits": baits + [dict(b, retired=True) for b in (retired or [])],
     }
@@ -415,6 +418,7 @@ def rotate(manifest_path, out_dir=None, **kwargs):
             os.makedirs(old_dir, exist_ok=True)
             os.replace(src, os.path.join(old_dir, name))
     kwargs.setdefault("dns_zone", old.get("dns_zone"))
+    kwargs.setdefault("email_domain", old.get("email_domain"))
     for k in ("http", "rdp"):
         if (old.get("ports") or {}).get(k):
             kwargs.setdefault(f"{k}_port", old["ports"][k])

@@ -10,6 +10,7 @@ import unittest
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["LURE_NO_TELEMETRY"] = "1"  # tests never send usage stats
 
 from lure.generate import generate
 from lure.listen import Alerter, parse_http, parse_rdp, run
@@ -893,3 +894,120 @@ class McpToolDescriptionTest(unittest.TestCase):
             self.assertFalse(a["openWorldHint"], t["name"])
             if a["readOnlyHint"]:
                 self.assertFalse(a["destructiveHint"], t["name"])
+
+
+class TelemetryTest(unittest.TestCase):
+    def test_off_without_key_and_when_opted_out(self):
+        from unittest import mock
+        from lure import telemetry
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(telemetry, "BUILTIN_KEY", ""):
+            self.assertFalse(telemetry.enabled())
+        with mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x", "LURE_NO_TELEMETRY": "1"}, clear=True):
+            self.assertFalse(telemetry.enabled())
+        with mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x", "DO_NOT_TRACK": "1"}, clear=True):
+            self.assertFalse(telemetry.enabled())
+        with mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x"}, clear=True):
+            self.assertTrue(telemetry.enabled())
+
+    def test_payload_never_carries_private_fields(self):
+        from unittest import mock
+        from lure import telemetry
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x", "XDG_CONFIG_HOME": d, "APPDATA": d}, clear=True):
+            body = telemetry.payload("alert", {"severity": "high", "service": "rdp", "demo": False,
+                                               "source": "10.0.0.9:5", "username": "a.patil_adm", "bait_file": "x.rdp",
+                                               "webhook": "https://hooks.slack.com/x"})
+            props = body["properties"]
+            for k in ("source", "username", "bait_file", "webhook"):
+                self.assertNotIn(k, props)
+            self.assertEqual(props["severity"], "high")
+            self.assertEqual(body["event"], "lure_alert")
+            self.assertRegex(body["distinct_id"], r"^[0-9a-f-]{36}$")
+            self.assertEqual(telemetry.install_id(), body["distinct_id"])
+
+    def test_send_posts_once_and_swallows_errors(self):
+        from unittest import mock
+        from lure import telemetry
+        sent = []
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x", "XDG_CONFIG_HOME": d, "APPDATA": d}, clear=True):
+            telemetry.send("command", {"command": "demo"}, post=sent.append, wait=True)
+            telemetry.send("command", {"command": "demo"}, post=lambda b: 1 / 0, wait=True)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["properties"]["command"], "demo")
+
+    def test_notice_shows_once(self):
+        from unittest import mock
+        from lure import telemetry
+        shown = []
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x", "XDG_CONFIG_HOME": d, "APPDATA": d}, clear=True):
+            telemetry.notice(shown.append)
+            telemetry.notice(shown.append)
+        self.assertEqual(len(shown), 1)
+        self.assertIn("LURE_NO_TELEMETRY", shown[0])
+
+
+class HeartbeatTest(unittest.TestCase):
+    def test_heartbeat_says_quiet_or_counts_new_bait_use(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.0.5", d)
+            a = Alerter(m, out=lambda l: None)
+            title, text = a.heartbeat(started=True, now=1000)
+            self.assertEqual(title, "Lure is listening")
+            title, text = a.heartbeat(now=2000)
+            self.assertIn("All quiet", text)
+            a.event("rdp", "10.0.0.7", 1, next(b for b in m["baits"] if b["service"] == "rdp")["username"])
+            title, text = a.heartbeat()
+            self.assertIn("1 bait login(s)", text)
+
+    def test_heartbeat_payload_shapes(self):
+        from lure.listen import text_payload
+        self.assertIn("Lure", text_payload("https://hooks.slack.com/services/x", "Lure", "ok")["text"])
+        self.assertEqual(text_payload("https://ntfy.sh/topic-x", "Lure", "ok")["topic"], "topic-x")
+        self.assertEqual(text_payload("https://example.com/hook", "Lure", "ok")["type"], "heartbeat")
+
+
+class EmailDomainTest(unittest.TestCase):
+    def test_bait_email_uses_given_domain_and_rotate_keeps_it(self):
+        from lure.generate import rotate
+        with tempfile.TemporaryDirectory() as d:
+            generate("10.0.0.2", d, email_domain="acme.co.in")
+            eml = next(f for f in os.listdir(d) if f.endswith(".eml"))
+            with open(os.path.join(d, eml)) as f:
+                text = f.read()
+            self.assertIn("@acme.co.in", text)
+            self.assertNotIn("-it.local", text)
+            self.assertNotIn(".example", text)
+            m = rotate(os.path.join(d, "manifest.json"))
+            self.assertEqual(m["email_domain"], "acme.co.in")
+
+    def test_default_domain_has_no_profile_echo(self):
+        with tempfile.TemporaryDirectory() as d:
+            generate("10.0.0.2", d, profile="plant")
+            eml = next(f for f in os.listdir(d) if f.endswith(".eml"))
+            with open(os.path.join(d, eml)) as f:
+                self.assertNotIn("plant-it", f.read())
+
+
+class ReviewFixesTest(unittest.TestCase):
+    def test_telemetry_send_never_raises_even_if_config_dir_breaks(self):
+        from unittest import mock
+        from lure import telemetry
+        with mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x"}, clear=True), \
+                mock.patch.object(telemetry, "_dir", side_effect=KeyError("HOME")):
+            telemetry.send("command", {"command": "demo"}, post=lambda b: None, wait=True)
+            telemetry.notice(lambda m: None)
+
+    def test_heartbeat_survives_odd_times_and_bad_webhook(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.0.5", d)
+            a = Alerter(m, out=lambda l: None, webhook="not a url")
+            a.history.append({"severity": "high", "time": "2026-11-16T10:00:00Z"})
+            a.history.append({"severity": "high"})
+            a.heartbeat(started=True, every_days=3)
+            title, text = a.heartbeat()
+            self.assertIn("still listening", title)
+
+    def test_start_message_states_the_real_interval(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = Alerter(generate("10.0.0.5", d), out=lambda l: None)
+            self.assertIn("every 3 day(s)", a.heartbeat(started=True, every_days=3)[1])
+            self.assertIn("every week", a.heartbeat(started=True)[1])

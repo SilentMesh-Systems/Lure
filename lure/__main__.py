@@ -35,6 +35,7 @@ def main():
     g.add_argument("--profile", default="it",
                    help="it (default), office, home, plant, bank, hospital, or a JSON profile file such as profiles/legal.json")
     g.add_argument("--dns-zone", help="a subdomain delegated to the listener (NS record); adds a DNS bait hostname")
+    g.add_argument("--email-domain", help="your organisation's email domain, used in the bait email (default corp.local)")
     g.add_argument("--vpn-port", type=int, default=1194, help="first VPN bait port (the next baits use the following ports)")
     g.add_argument("--vpn-count", type=int, default=1, help="one VPN bait per placement; each gets its own listener port")
 
@@ -89,6 +90,8 @@ def main():
     l.add_argument("--desktop", action="store_true", help="also show each alert as a popup on this computer")
     l.add_argument("--email-to", help="also email each alert here, sent from this address (needs LURE_SMTP_PASSWORD, an app password)")
     l.add_argument("--no-update-check", action="store_true", help="do not ask PyPI once a day whether a newer Lure exists")
+    l.add_argument("--heartbeat-days", type=float, default=7,
+                   help="send a 'still listening' message to your alert channels this often (default 7 days; 0 turns it off)")
     l.add_argument("--ui-host", default="127.0.0.1", help="dashboard address; keep 127.0.0.1 unless you know why")
     l.add_argument("--ui-port", type=int, default=8765)
     l.add_argument("--log", help="append alerts to this JSON-lines file (default: alerts.jsonl next to the manifest)")
@@ -103,6 +106,10 @@ def main():
         print(f"lure v{__version__} by SilentMesh: planted credentials that give the attacker away." + guide())
         return
     a = p.parse_args()
+    from . import telemetry
+    telemetry.notice()
+    telemetry.send("command", {"command": a.cmd, "profile": getattr(a, "profile", None)},
+                   wait=a.cmd in ("demo", "init", "generate", "rotate", "test", "update", "record"))
     if a.cmd == "init":
         from .init import init
         ask = input if sys.stdin.isatty() and not a.yes else None
@@ -110,7 +117,8 @@ def main():
             raise SystemExit(1)
         return
     if a.cmd == "generate":
-        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile, dns_zone=a.dns_zone)
+        m = generate(a.listener, a.out, a.site, a.vpn_count, a.vpn_port, profile=a.profile, dns_zone=a.dns_zone,
+                     email_domain=a.email_domain)
         files = sorted({b["file"] for b in m["baits"]})
         print(f"wrote {len(m['baits'])} bait credentials in {len(files)} files to {a.out}/ (see manifest.json for where to plant each)")
         for name in files:
@@ -197,6 +205,25 @@ def main():
                     alerter.update_available = newer
                     print(f"Lure {newer} is available. Nothing is installed without you: run `lure update` to review it.", flush=True)
             threading.Thread(target=_check, daemon=True).start()
+        if a.heartbeat_days < 0:
+            raise SystemExit("lure: --heartbeat-days must be 0 (off) or more")
+        if a.heartbeat_days and (alerter.desktop or alerter.email or alerter.webhook):
+            import threading
+            try:
+                alerter.heartbeat(started=True, every_days=a.heartbeat_days)
+            except Exception as e:
+                print(json.dumps({"error": f"heartbeat failed: {e}"}), flush=True)
+
+            def _beat():
+                import time as _t
+                while True:
+                    _t.sleep(a.heartbeat_days * 86400)
+                    try:
+                        alerter.heartbeat(every_days=a.heartbeat_days)
+                    except Exception as e:
+                        print(json.dumps({"error": f"heartbeat failed: {e}"}), flush=True)
+            threading.Thread(target=_beat, daemon=True).start()
+            print(f"heartbeat: a 'still listening' message every {a.heartbeat_days:g} day(s)", flush=True)
         if a.ui:
             from .ui import serve
             from .selftest import run as selftest

@@ -18,4 +18,5 @@ jobs:
         timeout-minutes: 5
         env:
           NO_PROXY: "*"
+          LURE_NO_TELEMETRY: "1"
           PYTHONFAULTHANDLER: "1"

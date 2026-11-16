@@ -65,6 +65,13 @@ def install_id():
 
 def notice(out=print):
     """Say once per install that stats are on, and how to turn them off."""
+    try:
+        _notice(out)
+    except Exception:
+        pass
+
+
+def _notice(out):
     if not enabled():
         return
     marker = os.path.join(_dir(), "telemetry-noticed")
@@ -94,13 +101,15 @@ def _post(body):
 
 def send(event, props=None, post=None, wait=False):
     """Fire and forget. Never raises and never slows Lure down."""
-    if not enabled():
+    try:
+        if not enabled():
+            return
+    except Exception:
         return
-    body = payload(event, props)
 
     def go():
         try:
-            (post or _post)(body)
+            (post or _post)(payload(event, props))
         except Exception:
             pass
     t = threading.Thread(target=go, daemon=True)

@@ -324,20 +324,20 @@ class Alerter:
                 "channels": {"desktop": bool(self.desktop), "email": (self.email or {}).get("to"),
                              "webhook": _channel_name(self.webhook), "syslog": self.syslog_on}, "depth": depth}
 
-    def heartbeat(self, started=False, now=None):
+    def heartbeat(self, started=False, now=None, every_days=7):
         """Tell the user Lure is still listening, so silence never means 'is it broken?'."""
         now = time.time() if now is None else now
         with self.lock:
             since = getattr(self, "_last_beat", None)
-            recent = [a for a in self.history
-                      if since is None or datetime.fromisoformat(a["time"]).timestamp() >= since]
+            recent = [a for a in self.history if since is None or _ts(a.get("time")) >= since]
             self._last_beat = now
         live = [b for b in self.manifest.get("baits", []) if not b.get("retired")]
         files = len({b["file"] for b in live})
         where = self.listen_info.get("listener") or "this machine"
         if started:
             title = "Lure is listening"
-            text = f"Started on {where}. {files} bait files armed. You will get a short message like this every week."
+            every = "every week" if every_days == 7 else f"every {every_days:g} day(s)"
+            text = f"Started on {where}. {files} bait files armed. You will get a short message like this {every}."
         else:
             new = [a for a in recent if a.get("severity") == "high"]
             title = "Lure is still listening"
@@ -352,7 +352,7 @@ class Alerter:
                                              data=json.dumps(text_payload(self.webhook, title, text)).encode(),
                                              headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5).close()
-            except OSError as e:
+            except (OSError, ValueError) as e:
                 self.out(json.dumps({"error": f"heartbeat webhook failed: {e}"}))
         if self.desktop:
             from .notify import desktop
@@ -413,6 +413,14 @@ class Alerter:
             msg = f"<10>lure: {line}".encode()
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.sendto(msg, (host, int(port or 514)))
+
+
+def _ts(value):
+    """Seconds since the epoch for an alert time; 0 if it is missing or unreadable."""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def text_payload(url, title, text):

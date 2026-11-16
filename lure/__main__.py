@@ -205,15 +205,23 @@ def main():
                     alerter.update_available = newer
                     print(f"Lure {newer} is available. Nothing is installed without you: run `lure update` to review it.", flush=True)
             threading.Thread(target=_check, daemon=True).start()
+        if a.heartbeat_days < 0:
+            raise SystemExit("lure: --heartbeat-days must be 0 (off) or more")
         if a.heartbeat_days and (alerter.desktop or alerter.email or alerter.webhook):
             import threading
-            alerter.heartbeat(started=True)
+            try:
+                alerter.heartbeat(started=True, every_days=a.heartbeat_days)
+            except Exception as e:
+                print(json.dumps({"error": f"heartbeat failed: {e}"}), flush=True)
 
             def _beat():
                 import time as _t
                 while True:
                     _t.sleep(a.heartbeat_days * 86400)
-                    alerter.heartbeat()
+                    try:
+                        alerter.heartbeat(every_days=a.heartbeat_days)
+                    except Exception as e:
+                        print(json.dumps({"error": f"heartbeat failed: {e}"}), flush=True)
             threading.Thread(target=_beat, daemon=True).start()
             print(f"heartbeat: a 'still listening' message every {a.heartbeat_days:g} day(s)", flush=True)
         if a.ui:

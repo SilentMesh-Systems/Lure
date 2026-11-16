@@ -985,3 +985,29 @@ class EmailDomainTest(unittest.TestCase):
             eml = next(f for f in os.listdir(d) if f.endswith(".eml"))
             with open(os.path.join(d, eml)) as f:
                 self.assertNotIn("plant-it", f.read())
+
+
+class ReviewFixesTest(unittest.TestCase):
+    def test_telemetry_send_never_raises_even_if_config_dir_breaks(self):
+        from unittest import mock
+        from lure import telemetry
+        with mock.patch.dict(os.environ, {"LURE_POSTHOG_KEY": "phc_x"}, clear=True), \
+                mock.patch.object(telemetry, "_dir", side_effect=KeyError("HOME")):
+            telemetry.send("command", {"command": "demo"}, post=lambda b: None, wait=True)
+            telemetry.notice(lambda m: None)
+
+    def test_heartbeat_survives_odd_times_and_bad_webhook(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.0.5", d)
+            a = Alerter(m, out=lambda l: None, webhook="not a url")
+            a.history.append({"severity": "high", "time": "2026-11-16T10:00:00Z"})
+            a.history.append({"severity": "high"})
+            a.heartbeat(started=True, every_days=3)
+            title, text = a.heartbeat()
+            self.assertIn("still listening", title)
+
+    def test_start_message_states_the_real_interval(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = Alerter(generate("10.0.0.5", d), out=lambda l: None)
+            self.assertIn("every 3 day(s)", a.heartbeat(started=True, every_days=3)[1])
+            self.assertIn("every week", a.heartbeat(started=True)[1])

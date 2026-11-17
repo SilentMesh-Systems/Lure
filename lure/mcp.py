@@ -164,6 +164,17 @@ class Server:
             f.writelines(json.dumps(a) + "\n" for a in alerts)
         return {"acknowledged": id}
 
+    @staticmethod
+    def _track_tool_outcome(name, data):
+        from . import telemetry
+
+        if name == "lure_generate":
+            telemetry.send("mcp_bait_set_generated", {"baits": data["baits"], "files": len(data["written"])})
+        elif name == "lure_record":
+            telemetry.send("mcp_bait_placement_recorded", {"count": data["updated"]})
+        elif name == "lure_rotate":
+            telemetry.send("mcp_bait_set_rotated", {"baits": len(data["fresh"]), "retired": data["retired_still_alerting"]})
+
     # --- protocol -------------------------------------------------------
     def handle(self, msg):
         method, mid = msg.get("method"), msg.get("id")
@@ -202,6 +213,7 @@ class Server:
                     return self._error(mid, -32602, f"unknown tool {name!r}")
                 try:
                     data = getattr(self, name)(**args)
+                    self._track_tool_outcome(name, data)
                     result = {"content": [{"type": "text", "text": json.dumps(data, indent=2)}],
                               "structuredContent": data, "isError": False}
                 except (ValueError, TypeError, OSError) as e:

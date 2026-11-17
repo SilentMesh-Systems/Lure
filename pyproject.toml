@@ -10,6 +10,12 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [{name = "SilentMesh Systems Private Limited"}]
+dependencies = [
+    "opentelemetry-api",
+    "opentelemetry-exporter-otlp",
+    "opentelemetry-sdk",
+    "posthog>=7.69,<8",
+]
 
 keywords = ["deception", "honeytoken", "canary", "security", "blue-team", "mcp", "incident-response"]
 classifiers = ["Programming Language :: Python :: 3", "License :: OSI Approved :: Apache Software License",

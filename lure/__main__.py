@@ -110,6 +110,9 @@ def main():
     telemetry.notice()
     telemetry.send("command", {"command": a.cmd, "profile": getattr(a, "profile", None)},
                    wait=a.cmd in ("demo", "init", "generate", "rotate", "test", "update", "record"))
+    if a.cmd != "mcp":
+        telemetry.configure_log_capture()
+        telemetry.log_lifecycle("lure_command_started", command=a.cmd)
     if a.cmd == "init":
         from .init import init
         ask = input if sys.stdin.isatty() and not a.yes else None
@@ -124,6 +127,7 @@ def main():
         for name in files:
             print(f"  {name}")
         print(f"prove it works: lure test --manifest {a.out}/manifest.json")
+        telemetry.log_lifecycle("lure_bait_generation_completed", command=a.cmd, baits=len(m["baits"]), files=len(files))
     elif a.cmd == "rotate":
         kw = {"profile": a.profile} if a.profile else {}
         m = rotate(a.manifest, **kw)

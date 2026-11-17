@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0b3 (unreleased; release tag v0.1.0b3)
+## 0.1.0b3 (17 Nov 2026)
 - Anonymous usage statistics (command, version, OS, alert severity and service only; never IPs, bait names or alert contents), on by default and stated on first run; off with LURE_NO_TELEMETRY=1 or DO_NOT_TRACK=1.
 - Weekly "still listening" message, plus one at start, to your alert channels; `--heartbeat-days` sets the interval, 0 turns it off.
 - Bait email uses your organisation's domain (`lure init` asks; `--email-domain` on generate) instead of the giveaway `<profile>-it.local`; rotate keeps it.

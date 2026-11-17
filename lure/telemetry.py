@@ -24,7 +24,7 @@ from . import __version__
 
 POSTHOG_HOST = "https://us.i.posthog.com"
 # PostHog project API keys are public by design (write-only, used in browsers).
-BUILTIN_KEY = ""
+BUILTIN_KEY = "phc_yQ334afjJkZ9qzmzx25gft57aiT8hyz4q6uecyqP9BX9"
 
 ALLOWED = {"command", "version", "os", "python", "profile", "channels", "severity", "service", "demo", "count"}
 

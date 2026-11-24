@@ -1138,3 +1138,59 @@ class ChatInjectionTest(unittest.TestCase):
         user = next(f["value"] for f in p["sections"][0]["facts"] if f["name"] == "Username")
         self.assertNotIn("[Reset](", user)
         self.assertIn(r"\[Reset\]", user)
+
+
+class HttpLoginFormatsTest(unittest.TestCase):
+    """Regression: only 'Authorization: Basic' was recognised, so other login styles were just 'medium'."""
+
+    def req(self, head, body=b""):
+        return head.replace(b"\n", b"\r\n") + b"\r\n" + body
+
+    def test_formats(self):
+        b64 = base64.b64encode(b"nas.admin_rw:x")
+        cases = {
+            "basic": self.req(b"GET / HTTP/1.1\nAuthorization:  basic   " + b64 + b"\n"),
+            "form": self.req(b"POST /login HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n",
+                             b"username=nas.admin_rw&password=x"),
+            "json": self.req(b"POST /api/login HTTP/1.1\nContent-Type: application/json\n",
+                             b'{"email": "nas.admin_rw", "password": "x"}'),
+            "nested json": self.req(b"POST /api HTTP/1.1\nContent-Type: application/json\n",
+                                    b'{"credentials": {"login": "nas.admin_rw", "pass": "x"}}'),
+            "digest": self.req(b'GET / HTTP/1.1\nAuthorization: Digest realm="x", username="nas.admin_rw", nonce="1"\n'),
+            "query": self.req(b"GET /login?user=nas.admin_rw&pw=x HTTP/1.1\n"),
+        }
+        for name, data in cases.items():
+            self.assertEqual(parse_http(data), "nas.admin_rw", name)
+
+    def test_basic_in_body_is_not_a_header(self):
+        data = self.req(b"POST /x HTTP/1.1\nContent-Type: text/plain\n", b"Authorization: Basic " + base64.b64encode(b"u1:x"))
+        self.assertIsNone(parse_http(data))
+
+    def test_padded_and_split_requests_reach_the_parser(self):
+        from lure.listen import _serve, HTTP_401
+        m = {"baits": [{"username": "nas.admin_rw", "file": "passwords.csv", "plant_on": "share"}]}
+        a = Alerter(m, out=lambda l: None)
+        b64 = base64.b64encode(b"nas.admin_rw:x")
+
+        async def scenario():
+            srv = await _serve(a, "http", 0, parse_http, HTTP_401)
+            port = srv.sockets[0].getsockname()[1]
+            padded = b"GET / HTTP/1.1\r\nCookie: " + b"a" * 6000 + b"\r\nAuthorization: Basic " + b64 + b"\r\n\r\n"
+            r, w = await asyncio.open_connection("127.0.0.1", port)
+            w.write(padded)
+            await w.drain()
+            await r.read()
+            w.close()
+            r, w = await asyncio.open_connection("127.0.0.1", port + 0)
+            for piece in (b"POST /login HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n",
+                          b"Content-Length: 30\r\n\r\n", b"username=nas.admin_rw&", b"password=x"):
+                w.write(piece)
+                await w.drain()
+                await asyncio.sleep(0.1)
+            await r.read()
+            w.close()
+            srv.close()
+
+        asyncio.run(scenario())
+        highs = [h for h in a.history if h["severity"] == "high"]
+        self.assertEqual(len(highs), 2)

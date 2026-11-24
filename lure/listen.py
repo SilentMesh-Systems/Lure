@@ -21,7 +21,12 @@ from datetime import datetime, timezone
 from .explain import explain, short_who
 
 RDP_COOKIE = re.compile(rb"Cookie: mstshash=([^\r\n]+)")
-HTTP_AUTH = re.compile(rb"Authorization: Basic ([A-Za-z0-9+/=]+)", re.I)
+HTTP_AUTH = re.compile(rb"^Authorization:[ \t]*Basic[ \t]+([A-Za-z0-9+/=]+)", re.I | re.M)
+HTTP_DIGEST_USER = re.compile(rb'^Authorization:[ \t]*Digest[ \t].*?\busername[ \t]*=[ \t]*"([^"]{1,200})"', re.I | re.M)
+# Field names a login form or JSON API commonly uses for the account name.
+LOGIN_FIELDS = ("username", "user", "login", "email", "uname", "user_name", "userid", "user_id", "account",
+                "j_username", "log", "name")
+MAX_HTTP_HEAD, MAX_HTTP_BODY = 16384, 8192
 
 
 def parse_rdp(data):
@@ -32,17 +37,99 @@ def parse_rdp(data):
 HTTP_PATH_TOKEN = re.compile(rb"^[A-Z]+ /(?:q|go|s)/([a-z0-9-]{4,40})[/?\s]", re.I)
 
 
-def parse_http(data):
-    m = HTTP_AUTH.search(data)
-    if not m:
-        # A token in the path: QR codes and bookmarks carry no login, only a URL.
-        p = HTTP_PATH_TOKEN.search(data)
-        return ("~" + p.group(1).decode().lower()) if p else None
-    try:
-        user = base64.b64decode(m.group(1)).decode("utf-8", "replace").split(":", 1)[0]
-    except ValueError:
+def _login_from_fields(fields):
+    """The account name from parsed form or JSON fields, if any login-like field is present."""
+    lower = {str(k).lower(): v for k, v in fields.items()}
+    for name in LOGIN_FIELDS:
+        v = lower.get(name)
+        if isinstance(v, list):
+            v = v[0] if v else None
+        if isinstance(v, (str, int)) and str(v).strip():
+            return str(v).strip()[:200]
+    return None
+
+
+def _login_from_body(head, body):
+    ctype = (re.search(rb"^Content-Type:[ \t]*([^\r\n;]+)", head, re.I | re.M) or [None, b""])[1].strip().lower()
+    text = body.decode("utf-8", "replace")
+    if ctype == b"application/json" or text.lstrip().startswith("{"):
+        try:
+            obj = json.loads(text)
+        except ValueError:
+            return None
+        if isinstance(obj, dict):
+            return _login_from_fields(obj) or next(
+                (_login_from_fields(v) for v in obj.values() if isinstance(v, dict) and _login_from_fields(v)), None)
         return None
-    return user or None
+    if ctype in (b"application/x-www-form-urlencoded", b"") or "=" in text:
+        return _login_from_fields(urllib.parse.parse_qs(text, keep_blank_values=False))
+    return None
+
+
+def parse_http(data):
+    """The login name in an HTTP request: Basic or Digest auth, a login form or JSON body, or a query string.
+    Bookmarks and QR codes carry a token in the path instead (returned as '~token')."""
+    head, _, body = data.partition(b"\r\n\r\n")
+    m = HTTP_AUTH.search(head)
+    if m:
+        try:
+            user = base64.b64decode(m.group(1)).decode("utf-8", "replace").split(":", 1)[0]
+        except ValueError:
+            user = None
+        if user:
+            return user
+    m = HTTP_DIGEST_USER.search(head)
+    if m:
+        return m.group(1).decode("utf-8", "replace")
+    if body.strip():
+        user = _login_from_body(head, body)
+        if user:
+            return user
+    first = head.split(b"\r\n", 1)[0]
+    if b"?" in first:
+        query = first.split(b" ")[1].split(b"?", 1)[1] if len(first.split(b" ")) > 1 else b""
+        user = _login_from_fields(urllib.parse.parse_qs(query.decode("utf-8", "replace")))
+        if user:
+            return user
+    # A token in the path: QR codes and bookmarks carry no login, only a URL.
+    p = HTTP_PATH_TOKEN.search(head)
+    return ("~" + p.group(1).decode().lower()) if p else None
+
+
+async def read_http_request(reader, timeout=5):
+    """Read a whole request: headers up to the blank line, then the body by Content-Length (both capped).
+    One read() of 4 KB missed logins that came after large headers or arrived split across packets."""
+    data = b""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while b"\r\n\r\n" not in data and len(data) < MAX_HTTP_HEAD:
+        left = deadline - loop.time()
+        if left <= 0:
+            break
+        try:
+            chunk = await asyncio.wait_for(reader.read(4096), timeout=left)
+        except asyncio.TimeoutError:
+            break
+        if not chunk:
+            break
+        data += chunk
+    head, sep, body = data.partition(b"\r\n\r\n")
+    if sep:
+        m = re.search(rb"^Content-Length:[ \t]*(\d{1,9})", head, re.I | re.M)
+        want = min(int(m.group(1)), MAX_HTTP_BODY) if m else 0
+        while len(body) < want:
+            left = deadline - loop.time()
+            if left <= 0:
+                break
+            try:
+                chunk = await asyncio.wait_for(reader.read(want - len(body)), timeout=left)
+            except asyncio.TimeoutError:
+                break
+            if not chunk:
+                break
+            body += chunk
+        data = head + sep + body[:MAX_HTTP_BODY]
+    return data
 
 
 def _summary(ev):
@@ -543,7 +630,10 @@ async def _serve(alerter, service, port, parser, reply):
         peer = writer.get_extra_info("peername") or ("?", 0)
         sock = writer.get_extra_info("sockname") or ("?", port)
         try:
-            data = await asyncio.wait_for(reader.read(4096), timeout=5)
+            if service == "http":
+                data = await read_http_request(reader)
+            else:
+                data = await asyncio.wait_for(reader.read(4096), timeout=5)
         except (asyncio.TimeoutError, ConnectionError):
             data = b""
         alerter.event(service, peer[0], peer[1], parser(data) if parser else None, local_port=sock[1])

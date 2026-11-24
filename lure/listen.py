@@ -176,6 +176,7 @@ class Alerter:
         # Low-value events dropped by the budget, and when the flood alert was last raised.
         self.suppressed = 0
         self.flood_reported = -1e18
+        self._queue = None
         self.manifest = manifest
         # Browsers and git first ask without a login, then retry with one. A bare
         # touch is held this many seconds and dropped if the same source then
@@ -408,6 +409,43 @@ class Alerter:
             import sys; sys.stdout.flush()
         except Exception:
             pass
+        # Slow or broken channels (webhook, email, popup, syslog) must never hold up the listener: the reply to
+        # the connection, and every other connection, would wait behind them. They run on a background worker.
+        self._enqueue(ev, line)
+
+    def _enqueue(self, ev, line):
+        with self.lock:
+            if self._queue is None:
+                import queue
+                self._queue = queue.Queue()
+                threading.Thread(target=self._deliver_loop, name="lure-delivery", daemon=True).start()
+                import atexit
+                atexit.register(self.flush, 20)
+        self._queue.put((ev, line))
+
+    def _deliver_loop(self):
+        while True:
+            ev, line = self._queue.get()
+            try:
+                self._deliver(ev, line)
+            except Exception as e:  # noqa: BLE001  a channel must never kill delivery of the next alert
+                self.out(json.dumps({"error": f"alert delivery failed: {e}"}))
+            finally:
+                self._queue.task_done()
+
+    def flush(self, timeout=None):
+        """Wait until queued alerts have been delivered (or timeout seconds pass). Returns True when done."""
+        q = self._queue
+        if q is None:
+            return True
+        deadline = None if timeout is None else time.time() + timeout
+        while q.unfinished_tasks:
+            if deadline is not None and time.time() > deadline:
+                return False
+            time.sleep(0.02)
+        return True
+
+    def _deliver(self, ev, line):
         from . import telemetry
         telemetry.send("alert", {"severity": ev.get("severity"), "service": (ev.get("service") or "").split(":")[0],
                                  "demo": bool(ev.get("demo"))})
@@ -418,7 +456,7 @@ class Alerter:
                                              data=json.dumps(webhook_payload(self.webhook, ev)).encode(),
                                              headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=5).close()
-            except OSError as e:
+            except (OSError, ValueError) as e:
                 self.out(json.dumps({"error": f"webhook failed: {e}"}))
         if self.desktop or self.email:
             head, text = alert_text(ev)
@@ -436,10 +474,13 @@ class Alerter:
                 except (OSError, smtplib_error()) as e:
                     self.out(json.dumps({"error": f"email failed: {e}"}))
         if self.syslog:
-            host, _, port = self.syslog.partition(":")
-            msg = f"<10>lure: {line}".encode()
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.sendto(msg, (host, int(port or 514)))
+            try:
+                host, _, port = self.syslog.partition(":")
+                msg = f"<10>lure: {line}".encode()
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.sendto(msg, (host, int(port or 514)))
+            except (OSError, ValueError) as e:
+                self.out(json.dumps({"error": f"syslog failed: {e}"}))
 
 
 def _ts(value):

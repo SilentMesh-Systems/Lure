@@ -1063,3 +1063,48 @@ class FloodAlertTest(unittest.TestCase):
 
 def explain_flood_text(state):
     return next(x["explain"]["what"] for x in state["alerts"] if x["service"] == "flood")
+
+
+class BackgroundDeliveryTest(unittest.TestCase):
+    """Regression: webhook, email, popup and syslog used to run inside the connection handler."""
+
+    def _slow_server(self, delay):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        got = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                got.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                time.sleep(delay)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        return f"http://127.0.0.1:{srv.server_address[1]}/hook", got
+
+    def test_slow_webhook_does_not_hold_up_the_listener(self):
+        url, got = self._slow_server(delay=3)
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        a = Alerter(m, out=lambda l: None, webhook=url)
+        t0 = time.time()
+        self.assertIsNotNone(a.event("http", "10.1.1.1", 1, "u1"))
+        self.assertIsNotNone(a.event("http", "10.2.2.2", 1, "u1"))
+        self.assertLess(time.time() - t0, 0.5, "event() waited for the webhook")
+        self.assertTrue(a.flush(timeout=15))
+        self.assertEqual(len(got), 2)
+
+    def test_bad_syslog_and_webhook_settings_never_raise(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        out = []
+        a = Alerter(m, out=out.append, webhook="not a url", syslog="no-such-host.invalid:notaport")
+        self.assertIsNotNone(a.event("http", "10.1.1.1", 1, "u1"))
+        self.assertTrue(a.flush(timeout=15))
+        errors = [json.loads(x)["error"] for x in out if '"error"' in x]
+        self.assertTrue(any("webhook failed" in e for e in errors))
+        self.assertTrue(any("syslog failed" in e for e in errors))

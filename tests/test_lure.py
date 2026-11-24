@@ -279,8 +279,11 @@ class DashboardTest(unittest.TestCase):
                 self.assertTrue(st["baits"][0]["triggered"])
                 self.assertEqual(st["alerts"][0]["severity"], "high")
 
+                alert_id = st["alerts"][0]["id"]
+
                 def post(ctype, origin):
-                    req = urllib.request.Request(base + "/api/ack", data=b'{"id": 1}', method="POST",
+                    req = urllib.request.Request(base + "/api/ack", data=json.dumps({"id": alert_id}).encode(),
+                                                 method="POST",
                                                  headers={"Content-Type": ctype, "Origin": origin})
                     try:
                         return urllib.request.urlopen(req, timeout=5).status
@@ -1209,9 +1212,56 @@ class CorruptLogTest(unittest.TestCase):
             self.assertEqual(len(a.history), 1)
             self.assertEqual(a.repaired, 2)
             self.assertTrue(os.path.exists(log + ".corrupt"))
+            # The log itself is never rewritten (other processes may be appending to it).
             with open(log) as f:
-                self.assertEqual(len([l for l in f if l.strip()]), 1)
+                self.assertEqual(len([l for l in f if l.strip()]), 3)
             self.assertTrue(any("unreadable" in x for x in out))
+            # A second start does not copy the same bad lines out again.
+            Alerter({"baits": []}, out=[].append, log=log)
+            with open(log + ".corrupt") as f:
+                self.assertEqual(len([l for l in f if l.strip()]), 2)
+
+
+class SharedAlertLogTest(unittest.TestCase):
+    """Regression: per-process ids collided and acknowledging rewrote the file, erasing other processes' alerts."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.log = os.path.join(self.d, "alerts.jsonl")
+        self.m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"},
+                            {"username": "u2", "file": "b.csv", "plant_on": "y"}]}
+
+    def test_two_processes_share_one_log_without_losing_alerts(self):
+        listener = Alerter(self.m, out=[].append, log=self.log)
+        watcher = Alerter(self.m, out=[].append, log=self.log)      # e.g. `lure watch` in another process
+        listener.event("http", "10.1.1.1", 1, "u1")
+        watcher.event("log:auth", "10.2.2.2", 1, "u2")
+        ids = [e["id"] for e in listener.history] + [e["id"] for e in watcher.history]
+        self.assertEqual(len(set(ids)), 2, "alert ids collided")
+        # The dashboard (listener) sees the watcher's alert without a restart.
+        self.assertEqual(len(listener.state()["alerts"]), 2)
+        # Acknowledging in the listener keeps the watcher's line in the file.
+        listener.acknowledge(listener.history[0]["id"])
+        from lure.alertlog import read
+        alerts = read(self.log)
+        self.assertEqual(len(alerts), 2)
+        self.assertEqual(sum(1 for a in alerts if a.get("acknowledged")), 1)
+
+    def test_mcp_acknowledge_appends(self):
+        from lure.alertlog import read
+        from lure.mcp import Server
+        a = Alerter(self.m, out=[].append, log=self.log)
+        a.event("http", "10.1.1.1", 1, "u1")
+        manifest = os.path.join(self.d, "manifest.json")
+        with open(manifest, "w") as f:
+            json.dump(self.m, f)
+        s = Server(manifest, self.log)
+        s.lure_acknowledge(a.history[0]["id"])
+        a.event("http", "10.3.3.3", 1, "u2")                      # written after the MCP acknowledgement
+        alerts = read(self.log)
+        self.assertEqual(len(alerts), 2)
+        self.assertTrue(alerts[0]["acknowledged"])
+        self.assertFalse(alerts[1].get("acknowledged"))
 
 
 class ConcurrencyTest(unittest.TestCase):

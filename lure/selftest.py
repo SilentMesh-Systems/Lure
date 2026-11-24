@@ -31,9 +31,12 @@ def _http(host, port, username, path="/"):
 
 
 def _count(log):
+    """Number of alerts in the log (acknowledgement records are not alerts); None if it is unreadable."""
+    if not os.path.exists(log):
+        return None
     try:
-        with open(log) as f:
-            return sum(1 for _ in f)
+        from .alertlog import read
+        return len(read(log))
     except OSError:
         return None
 
@@ -73,8 +76,8 @@ def run(manifest_path, listener=None, rdp=3389, http=8080, out=print):
     time.sleep(1.5)
     after = _count(log)
     if after is not None and after > (before or 0):
-        with open(log) as f:
-            last = json.loads(f.readlines()[-1])
+        from .alertlog import read
+        last = (read(log) or [{}])[-1]
         out(f"  alert written: {last.get('severity', '?')} {last.get('username') or ''} from {last.get('source', '')} -> {log}")
         out("  If a webhook or syslog is configured, the same alert is already there.")
     elif after is None:

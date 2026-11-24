@@ -307,30 +307,43 @@ class Alerter:
         # (source ip, username) of HTTP bait logins answered with the warning banner.
         self.warned = set()
         self.repaired = 0
+        self._tail = None
         if log:
-            try:
-                with open(log, errors="replace") as f:
-                    lines = [line for line in f if line.strip()]
-            except FileNotFoundError:
-                lines = []
-            bad = []
-            for line in lines:
-                try:
-                    ev = json.loads(line)
-                    if not isinstance(ev, dict):
-                        raise ValueError("not an alert")
-                    self.history.append(ev)
-                except ValueError:
-                    bad.append(line)
+            from . import alertlog
+            self._tail = alertlog.Tail(log)
+            alerts, _, bad = alertlog.parse_lines(self._tail.new_lines())
+            self.history = alerts
             if bad:
-                # One damaged line (a crash mid-write, or tampering) must not stop Lure from starting.
-                # Keep it for inspection, rewrite the log with the good lines, and say so.
+                # One damaged line (a crash mid-write, or tampering) must not stop Lure from starting. The log is
+                # never rewritten (other Lure processes may be appending); bad lines are skipped and copied out
+                # once for inspection.
                 self.repaired = len(bad)
-                with open(log + ".corrupt", "a", errors="replace") as f:
-                    f.writelines(bad)
-                with open(log, "w") as f:
-                    f.writelines(json.dumps(e) + "\n" for e in self.history)
-                self.out(json.dumps({"error": f"alert log: {len(bad)} unreadable line(s) moved to {log}.corrupt"}))
+                seen = set()
+                try:
+                    with open(log + ".corrupt", errors="replace") as f:
+                        seen = {line.rstrip("\r\n") for line in f}
+                except FileNotFoundError:
+                    pass
+                new = [b.rstrip("\r\n") for b in bad if b.rstrip("\r\n") not in seen]
+                if new:
+                    with open(log + ".corrupt", "a", errors="replace") as f:
+                        f.writelines(line + "\n" for line in new)
+                self.out(json.dumps({"error": f"alert log: {len(bad)} unreadable line(s) skipped; "
+                                              f"copies are in {log}.corrupt"}))
+
+    def _sync(self):
+        """Pick up alerts and acknowledgements that other Lure processes appended to the same log."""
+        if not self._tail:
+            return
+        from . import alertlog
+        alerts, acked, _ = alertlog.parse_lines(self._tail.new_lines())
+        with self.lock:
+            known = {e.get("id") for e in self.history}
+            self.history.extend(a for a in alerts if a.get("id") not in known)
+            if acked:
+                for e in self.history:
+                    if e.get("id") in acked:
+                        e["acknowledged"] = True
 
     def event(self, service, src_ip, src_port, username, now=None, local_port=None, source_detail=None):
         now = time.time() if now is None else now
@@ -464,17 +477,20 @@ class Alerter:
 
     def acknowledge(self, alert_id):
         ids = set(alert_id) if isinstance(alert_id, (list, tuple, set)) else {alert_id}
+        self._sync()
         with self.lock:
-            hit = False
+            matched = [ev["id"] for ev in self.history if ev.get("id") in ids]
             for ev in self.history:
                 if ev.get("id") in ids:
-                    ev["acknowledged"] = hit = True
-            if hit and self.log:
-                with open(self.log, "w") as f:
-                    f.writelines(json.dumps(e) + "\n" for e in self.history)
-        return hit
+                    ev["acknowledged"] = True
+        if matched and self.log:
+            # Appended, never a rewrite: other processes may be writing to the same log.
+            from . import alertlog
+            alertlog.append_ack(self.log, matched, by="dashboard")
+        return bool(matched)
 
     def state(self):
+        self._sync()
         with self.lock:
             alerts = [a if "explain" in a else dict(a, explain=explain(a)) for a in reversed(self.history)]
         fired = {a["username"] for a in alerts if a.get("severity") == "high" and a.get("bait_file")}
@@ -546,12 +562,13 @@ class Alerter:
 
     def _emit(self, ev):
         line = json.dumps(ev)
+        from . import alertlog
         with self.lock:
-            ev = dict(ev, id=len(self.history) + 1, acknowledged=False)
+            # Clock-based ids stay unique when listen, watch and aws watch share one log.
+            ev = dict(ev, id=alertlog.new_id(), acknowledged=False)
             self.history.append(ev)
             if self.log:
-                with open(self.log, "a") as f:
-                    f.write(json.dumps(ev) + "\n")
+                alertlog.append_alert(self.log, ev)
         self.out(line)
         try:
             import sys; sys.stdout.flush()

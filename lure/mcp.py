@@ -93,11 +93,8 @@ class Server:
             return {"baits": []}
 
     def _alerts(self):
-        try:
-            with open(self.log_path) as f:
-                return [json.loads(line) for line in f if line.strip()]
-        except FileNotFoundError:
-            return []
+        from .alertlog import read
+        return read(self.log_path)
 
     @staticmethod
     def _public(b, fired):
@@ -153,15 +150,11 @@ class Server:
                 "next": "Replant the fresh files and restart `lure listen` so it loads the new manifest."}
 
     def lure_acknowledge(self, id):
-        alerts = self._alerts()
-        hit = False
-        for a in alerts:
-            if a.get("id") == id:
-                a["acknowledged"] = hit = True
-        if not hit:
+        from .alertlog import append_ack
+        if not any(a.get("id") == id for a in self._alerts()):
             raise ValueError(f"no alert with id {id}")
-        with open(self.log_path, "w") as f:
-            f.writelines(json.dumps(a) + "\n" for a in alerts)
+        # Appended, never a rewrite: `lure listen` may be writing to the same log right now.
+        append_ack(self.log_path, [id], by="mcp")
         return {"acknowledged": id}
 
     # --- protocol -------------------------------------------------------

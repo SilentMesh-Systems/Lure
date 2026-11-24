@@ -92,6 +92,10 @@ def main():
     l.add_argument("--no-update-check", action="store_true", help="do not ask PyPI once a day whether a newer Lure exists")
     l.add_argument("--heartbeat-days", type=float, default=7,
                    help="send a 'still listening' message to your alert channels this often (default 7 days; 0 turns it off)")
+    l.add_argument("--alive-url", help="tamper alarm: ping this dead-man URL (healthchecks.io, Cronitor, ...) every "
+                                       "few minutes; that service alerts you if the pings stop")
+    l.add_argument("--alive-file", help="tamper alarm: rewrite this small JSON file every few minutes, for local monitoring")
+    l.add_argument("--alive-minutes", type=float, default=5, help="how often to check in (default 5 minutes)")
     l.add_argument("--ui-host", default="127.0.0.1", help="dashboard address; keep 127.0.0.1 unless you know why")
     l.add_argument("--ui-port", type=int, default=8765)
     l.add_argument("--log", help="append alerts to this JSON-lines file (default: alerts.jsonl next to the manifest)")
@@ -224,6 +228,16 @@ def main():
                         print(json.dumps({"error": f"heartbeat failed: {e}"}), flush=True)
             threading.Thread(target=_beat, daemon=True).start()
             print(f"heartbeat: a 'still listening' message every {a.heartbeat_days:g} day(s)", flush=True)
+        if a.alive_url or a.alive_file:
+            from . import alive
+            if a.alive_minutes <= 0:
+                raise SystemExit("lure: --alive-minutes must be more than 0")
+            alive.start(a.alive_url, a.alive_file, a.alive_minutes,
+                        info=lambda: {"alerts": len(alerter.history), "listening": True},
+                        out=lambda line: print(line, flush=True))
+            print(f"tamper alarm: checking in every {a.alive_minutes:g} minute(s)"
+                  + (" with the dead-man URL" if a.alive_url else "")
+                  + (f", alive file {a.alive_file}" if a.alive_file else ""), flush=True)
         if a.ui:
             from .ui import serve
             from .selftest import run as selftest

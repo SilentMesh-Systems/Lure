@@ -1240,3 +1240,56 @@ class ConcurrencyTest(unittest.TestCase):
         self.assertEqual(mediums, 20)
         self.assertEqual(baits_seen, 50)
         self.assertEqual(floods, 1)
+
+
+class TamperAlarmTest(unittest.TestCase):
+    def test_check_in_pings_url_and_writes_file(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from lure import alive
+        hits = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "alive.json")
+            ok = alive.beat(f"http://127.0.0.1:{srv.server_address[1]}/ping/abc", path, {"alerts": 3})
+            self.assertTrue(ok)
+            self.assertEqual(hits, ["/ping/abc"])
+            with open(path) as f:
+                self.assertEqual(json.load(f)["alerts"], 3)
+
+    def test_failures_are_reported_not_raised(self):
+        from lure import alive
+        out = []
+        self.assertFalse(alive.beat("not a url", os.path.join("no", "such", "dir", "a.json"), out=out.append))
+        self.assertEqual(len(out), 2)
+
+    def test_loop_keeps_checking_in(self):
+        import threading
+        from lure import alive
+        calls = []
+        sleeps = []
+        stop = threading.Event()
+
+        def fake_sleep(s):
+            sleeps.append(s)
+            if len(sleeps) > 3:
+                stop.set()
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "alive.json")
+            t = alive.start(None, path, every_minutes=2, info=lambda: calls.append(1) or {}, sleep=fake_sleep,
+                            stop=stop)
+            t.join(timeout=5)
+        self.assertEqual(sleeps[0], 120)
+        self.assertGreaterEqual(len(calls), 3)

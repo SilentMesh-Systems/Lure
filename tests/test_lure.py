@@ -718,14 +718,34 @@ class FounderFixesTest(unittest.TestCase):
     def test_desktop_popup_command_per_platform(self):
         from unittest import mock
         from lure import notify
-        seen = []
+        seen, envs = [], []
         for plat in ("win32", "darwin", "linux"):
             with mock.patch.object(notify.sys, "platform", plat), mock.patch.object(notify.shutil, "which", return_value="/usr/bin/notify-send"):
-                self.assertTrue(notify.desktop("Lure: Bait used", "It's from 10.0.0.9", run=lambda c, **k: seen.append(c)))
+                self.assertTrue(notify.desktop("Lure: Bait used", "It's from 10.0.0.9",
+                                               run=lambda c, **k: (seen.append(c), envs.append(k.get("env")))))
         self.assertEqual(seen[0][0], "powershell")
-        self.assertIn("It''s from", seen[0][-1])
+        # The alert text must never be inside the PowerShell script, only in the environment.
+        self.assertNotIn("It's from", seen[0][-1])
+        self.assertEqual(envs[0]["LURE_TOAST_BODY"], "It's from 10.0.0.9")
         self.assertEqual(seen[1][0], "osascript")
         self.assertEqual(seen[2][0], "notify-send")
+
+    def test_desktop_popup_text_cannot_inject_powershell(self):
+        """Regression: curly quotes (U+2018/U+2019) used to end the PowerShell string and run commands."""
+        import shutil, tempfile, unittest
+        from lure import notify
+        if sys.platform != "win32" or not shutil.which("powershell"):
+            raise unittest.SkipTest("needs Windows PowerShell")
+        marker = os.path.join(tempfile.mkdtemp(), "injected.txt")
+        os.environ["LURE_TEST_MARKER"] = marker
+        try:
+            # No ASCII quotes in the payload, so the old escaping (doubling ') cannot neutralise it.
+            payload = "x’; Set-Content -Path $env:LURE_TEST_MARKER -Value pwned; ’"
+            for text in (payload, payload.replace("’", "‘")):
+                notify.desktop("Lure: " + text, "Unknown login " + text)
+        finally:
+            os.environ.pop("LURE_TEST_MARKER", None)
+        self.assertFalse(os.path.exists(marker), "alert text was executed as PowerShell")
 
     def test_email_needs_app_password_and_sends(self):
         from unittest import mock

@@ -107,11 +107,11 @@ class Server:
     # --- tools ----------------------------------------------------------
     def lure_status(self):
         m, alerts = self._manifest(), self._alerts()
-        fired = {a["username"] for a in alerts if a.get("severity") == "high"}
+        fired = {a["username"] for a in alerts if a.get("severity") == "high" and a.get("bait_file")}
         live = [b for b in m.get("baits", []) if not b.get("retired")]
         paths = {}
         for a in alerts:
-            if a.get("severity") == "high":
+            if a.get("severity") == "high" and a.get("bait_file"):
                 ip = a["source"].rsplit(":", 1)[0]
                 if not paths.get(ip) or paths[ip][-1] != a["bait_file"]:
                     paths.setdefault(ip, []).append(a["bait_file"])

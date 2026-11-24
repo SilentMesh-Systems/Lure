@@ -92,8 +92,22 @@ def attack(ev):
     return ("T1552.001", "Unsecured Credentials: Credentials In Files")
 
 
+def _explain_flood(ev, ip):
+    return {
+        "who": _who(ip) + " (the last address seen in the burst)",
+        "what": f"A burst of unknown logins or connections; {ev.get('suppressed', 0)} were not reported one by one.",
+        "how": "Someone sent many logins or connections in a short time. This can be an attempt to hide a real "
+               "bait login in the noise. Bait logins are still alerted individually.",
+        "next": ["Check whether a scanner or load test was running.",
+                 "If not, find the device sending the burst and look for an intruder.",
+                 "Watch for any bait alert from the same address; it would be the real intrusion."],
+        "attack": "T1499", "attack_name": "Endpoint Denial of Service"}
+
+
 def explain(ev):
     ip = (ev.get("source") or "?").rsplit(":", 1)[0]
+    if ev.get("service") == "flood":
+        return _explain_flood(ev, ip)
     where = ev.get("location") or ev.get("planted_on")
     if ev.get("severity") == "high":
         what = f"The bait {ev.get('bait_file')}" + (f", planted in {where}." if where else ".")

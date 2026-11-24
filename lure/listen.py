@@ -46,6 +46,8 @@ def parse_http(data):
 
 
 def _summary(ev):
+    if ev.get("service") == "flood":
+        return "Burst of junk logins on the Lure listener", ""
     if ev.get("severity") == "high":
         head = ("Retired bait used: " if ev.get("retired") else "Bait used: ") + str(ev.get("bait_file"))
     else:
@@ -109,7 +111,7 @@ def _incidents(alerts):
         by_ip.setdefault(a["source"].rsplit(":", 1)[0], []).append(a)
     out = []
     for ip, evs in by_ip.items():
-        highs = [e for e in evs if e.get("severity") == "high"]
+        highs = [e for e in evs if e.get("severity") == "high" and e.get("bait_file")]
         last = (highs or evs)[-1]
         out.append({
             "source": ip, "who": last["explain"]["who"], "from": short_who(ip), "baits": len({e["bait_file"] for e in highs}),
@@ -171,6 +173,9 @@ class Alerter:
         self.window, self.max_per_window = window, max_per_window
         self.seen = {}
         self.sent = []
+        # Low-value events dropped by the budget, and when the flood alert was last raised.
+        self.suppressed = 0
+        self.flood_reported = -1e18
         self.manifest = manifest
         # Browsers and git first ask without a login, then retry with one. A bare
         # touch is held this many seconds and dropped if the same source then
@@ -232,11 +237,18 @@ class Alerter:
                          "is for authorised personnel only")
         elif now - self.seen.get(key, -1e18) < self.window:
             return None
-        self.sent = [t for t in self.sent if now - t < self.window]
-        if len(self.sent) >= self.max_per_window:
-            return None
+        if bait is None:
+            # Only events that carry no bait share the budget. A bait use is never dropped for budget reasons:
+            # otherwise an intruder could send junk logins until the budget is gone, then use a bait unseen.
+            self.sent = [t for t in self.sent if now - t < self.window]
+            if len(self.sent) >= self.max_per_window:
+                self.suppressed += 1
+                if now - self.flood_reported >= self.window:
+                    self.flood_reported = now
+                    self._emit(self._flood_event(now, src_ip, src_port))
+                return None
+            self.sent.append(now)
         self.seen[key] = now
-        self.sent.append(now)
         if bait is not None:
             if service == "http" and not after_warning:
                 self.warned.add((src_ip, username))
@@ -258,10 +270,25 @@ class Alerter:
         self._emit(ev)
         return ev
 
+    def _flood_event(self, now, src_ip, src_port):
+        """One alert when the low-value budget runs out: a burst like this can be an attempt to hide a real login."""
+        ev = {
+            "time": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
+            "severity": "high", "service": "flood", "source": f"{src_ip}:{src_port}", "username": None,
+            "bait_file": None, "planted_on": None, "location": None, "retired": False,
+            "why": (f"more than {self.max_per_window} unknown logins or connections in {self.window // 60} minutes: "
+                    "someone may be flooding the listener to hide a real bait login. Bait logins are still alerted."),
+            "suppressed": self.suppressed,
+        }
+        if self.demo:
+            ev["demo"] = True
+        ev["explain"] = explain(ev)
+        return ev
+
     def _evidence(self, src_ip, ev):
         """Engagement depth for this source and what the alert does and does not show."""
         with self.lock:
-            prior = [a for a in self.history if a.get("severity") == "high"
+            prior = [a for a in self.history if a.get("severity") == "high" and a.get("bait_file")
                      and a["source"].rsplit(":", 1)[0] == src_ip]
         files = []
         for a in prior + [ev]:
@@ -301,13 +328,13 @@ class Alerter:
     def state(self):
         with self.lock:
             alerts = [a if "explain" in a else dict(a, explain=explain(a)) for a in reversed(self.history)]
-        fired = {a["username"] for a in alerts if a.get("severity") == "high"}
+        fired = {a["username"] for a in alerts if a.get("severity") == "high" and a.get("bait_file")}
         baits = [dict(b, triggered=b["username"] in fired) for b in self.manifest.get("baits", [])
                  if not b.get("retired") or b["username"] in fired]
         # The attacker's path: per source address, the baits used, oldest first.
         paths, depth = {}, {}
         for a in reversed(alerts):
-            if a.get("severity") == "high":
+            if a.get("severity") == "high" and a.get("bait_file"):
                 ip = a["source"].rsplit(":", 1)[0]
                 step = {"time": a["time"], "file": a["bait_file"], "service": a["service"]}
                 if not paths.get(ip) or paths[ip][-1]["file"] != step["file"]:

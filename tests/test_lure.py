@@ -122,9 +122,22 @@ class AlerterTest(unittest.TestCase):
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 1, "u1", now=0))
         self.assertIsNone(self.a.event("rdp", "10.1.1.1", 2, "u1", now=10))
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 3, "u1", now=700))
+        # The budget (3 per window) covers only events without a bait.
         self.a.event("rdp", "10.2.2.2", 1, None, now=701)
         self.a.event("rdp", "10.3.3.3", 1, None, now=702)
+        self.a.event("rdp", "10.5.5.5", 1, None, now=702)
         self.assertIsNone(self.a.event("rdp", "10.4.4.4", 1, None, now=703))
+
+    def test_junk_logins_cannot_hide_a_bait_login(self):
+        """Regression: junk logins used to use up the shared budget so a real bait login raised no alert."""
+        for i in range(25):
+            self.a.event("http", "10.9.9.9", 1000 + i, f"probe{i}", now=10 + i)
+        ev = self.a.event("http", "10.9.9.9", 2000, "u1", now=40)
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["severity"], "high")
+        floods = [json.loads(x) for x in self.out if '"flood"' in x]
+        self.assertEqual(len(floods), 1)
+        self.assertEqual(floods[0]["severity"], "high")
 
 
 class DemonstratedIntentTest(unittest.TestCase):
@@ -1031,3 +1044,22 @@ class ReviewFixesTest(unittest.TestCase):
             a = Alerter(generate("10.0.0.5", d), out=lambda l: None)
             self.assertIn("every 3 day(s)", a.heartbeat(started=True, every_days=3)[1])
             self.assertIn("every week", a.heartbeat(started=True)[1])
+
+
+class FloodAlertTest(unittest.TestCase):
+    def test_flood_alert_does_not_pollute_attacker_paths(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        out = []
+        a = Alerter(m, out=out.append, window=600, max_per_window=2)
+        for i in range(5):
+            a.event("http", "10.9.9.9", 1000 + i, f"probe{i}", now=10 + i)
+        a.event("http", "10.9.9.9", 2000, "u1", now=40)
+        st = a.state()
+        self.assertEqual([s["file"] for s in st["paths"]["10.9.9.9"]], ["passwords.xlsx"])
+        self.assertEqual(st["depth"]["10.9.9.9"]["baits_used"], 1)
+        self.assertTrue(any(x["service"] == "flood" for x in st["alerts"]))
+        self.assertIn("burst", explain_flood_text(st))
+
+
+def explain_flood_text(state):
+    return next(x["explain"]["what"] for x in state["alerts"] if x["service"] == "flood")

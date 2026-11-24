@@ -10,6 +10,7 @@ anonymous usage counts are described in telemetry.py.
 import asyncio
 import base64
 import json
+import os
 import re
 import socket
 import threading
@@ -280,10 +281,7 @@ class Alerter:
 
     def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None,
                  merge_window=0, desktop=False, email=None, demo=False):
-        self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
-        # Services whose username cannot be read (OpenVPN) are identified by port.
-        # Only live baits own a port; a rotated set reuses the same ports.
-        self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port") and not b.get("retired")}
+        self._set_baits(manifest)
         self.webhook, self.syslog, self.out = webhook, syslog, out
         self.desktop, self.email, self.demo = desktop, email, demo
         self.update_available = None
@@ -334,6 +332,23 @@ class Alerter:
                         f.writelines(line + "\n" for line in new)
                 self.out(json.dumps({"error": f"alert log: {len(bad)} unreadable line(s) skipped; "
                                               f"copies are in {log}.corrupt"}))
+
+    def _set_baits(self, manifest):
+        self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
+        # Services whose username cannot be read (OpenVPN) are identified by port.
+        # Only live baits own a port; a rotated set reuses the same ports.
+        self.by_port = {b["port"]: b for b in manifest.get("baits", []) if b.get("port") and not b.get("retired")}
+
+    def reload_manifest(self, manifest):
+        """Switch to a new bait set (after `lure rotate` or `lure record`) without restarting the listener.
+        Retired baits stay in the manifest, so they keep alerting."""
+        with self.lock:
+            self._set_baits(manifest)
+            self.manifest = manifest
+            self.listen_info["listener"] = manifest.get("listener")
+        live = sum(1 for b in manifest.get("baits", []) if not b.get("retired"))
+        self.out(json.dumps({"info": f"bait set reloaded: {live} live bait(s), "
+                                     f"{len(manifest.get('baits', [])) - live} retired"}))
 
     def _sync(self):
         """Pick up alerts and acknowledgements that other Lure processes appended to the same log."""
@@ -674,6 +689,37 @@ class Alerter:
                     s.sendto(msg, (host, int(port or 514)))
             except (OSError, ValueError) as e:
                 self.out(json.dumps({"error": f"syslog failed: {e}"}))
+
+
+def watch_manifest(alerter, path, every=10, sleep=time.sleep, stop=None):
+    """Reload the bait set when the manifest file changes. Returns the background thread."""
+    stop = stop or threading.Event()
+
+    def mtime():
+        try:
+            return os.stat(path).st_mtime_ns
+        except OSError:
+            return None
+
+    seen = [mtime()]
+
+    def loop():
+        while not stop.is_set():
+            sleep(every)
+            now = mtime()
+            if now is None or now == seen[0]:
+                continue
+            try:
+                with open(path) as f:
+                    m = json.load(f)
+            except (OSError, ValueError):
+                continue          # half-written: try again next time
+            seen[0] = now
+            alerter.reload_manifest(m)
+
+    t = threading.Thread(target=loop, name="lure-manifest-watch", daemon=True)
+    t.start()
+    return t
 
 
 def _ts(value):

@@ -1375,3 +1375,49 @@ class RepeatAttemptsTest(unittest.TestCase):
         a.event("rdp", "10.1.1.1", 2, "u1", now=10)
         a.event("rdp", "10.1.1.1", 3, "u1", now=700)
         self.assertEqual(sum(1 for x in out if '"severity"' in x), 2)
+
+
+class ReloadAfterRotateTest(unittest.TestCase):
+    """Regression: after `lure rotate` a running listener still knew only the old baits until restarted."""
+
+    def test_running_listener_picks_up_rotated_baits(self):
+        import threading
+        from lure.generate import rotate
+        from lure.listen import watch_manifest
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.0.5", d)
+            path = os.path.join(d, "manifest.json")
+            old_user = next(b["username"] for b in m["baits"] if b["service"] == "http")
+            a = Alerter(m, out=[].append)
+            ticks = threading.Event()
+            stop = threading.Event()
+
+            def fake_sleep(_):
+                ticks.wait(5)
+                ticks.clear()
+            t = watch_manifest(a, path, every=0, sleep=fake_sleep, stop=stop)
+            time.sleep(0.05)                       # let the watcher record the first modification time
+            new = rotate(path)
+            os.utime(path, None)
+            new_user = next(b["username"] for b in new["baits"] if b["service"] == "http" and not b.get("retired"))
+            for _ in range(50):
+                ticks.set()
+                time.sleep(0.05)
+                if new_user in a.by_user:
+                    break
+            stop.set()
+            ticks.set()
+            t.join(timeout=5)
+            self.assertEqual(a.event("http", "10.9.9.1", 1, new_user, now=0)["severity"], "high")
+            old = a.event("http", "10.9.9.2", 1, old_user, now=0)
+            self.assertEqual(old["severity"], "high")
+            self.assertTrue(old["retired"])
+
+    def test_log_watcher_follows_a_reload(self):
+        from lure.watch import Watcher
+        a = Alerter({"baits": [{"username": "old_user", "file": "a.csv", "plant_on": "x"}]}, out=[].append)
+        w = Watcher(a, [])
+        a.reload_manifest({"baits": [{"username": "new_user", "file": "b.csv", "plant_on": "y"}]})
+        ev = w.scan_line("/var/log/auth.log", "Failed password for new_user from 10.1.1.9 port 22")
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["severity"], "high")

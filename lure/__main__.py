@@ -140,6 +140,8 @@ def main():
             manifest = json.load(f)
         log = os.path.join(os.path.dirname(os.path.abspath(a.manifest)), "alerts.jsonl")
         alerter = Alerter(manifest, webhook=a.webhook, syslog=a.syslog, log=log)
+        from .listen import watch_manifest
+        watch_manifest(alerter, a.manifest)
         print(f"watching {len(a.logs)} log file(s) for {len(alerter.by_user)} bait usernames", flush=True)
         Watcher(alerter, a.logs, from_start=a.from_start).run()
     elif a.cmd == "aws":
@@ -190,6 +192,9 @@ def main():
         email = email or cfg.get("email")
         alerter = Alerter(manifest, webhook=a.webhook or cfg.get("webhook"), syslog=a.syslog, log=log, merge_window=8,
                           desktop=a.desktop or bool(cfg.get("desktop")), email=email)
+        # Pick up `lure rotate` and `lure record` without a restart.
+        from .listen import watch_manifest
+        watch_manifest(alerter, a.manifest)
         ports = manifest.get("ports") or {}
         a.rdp, a.http = a.rdp or ports.get("rdp", 3389), a.http or ports.get("http", 8080)
         vpn_list = sorted({b["port"] for b in manifest.get("baits", []) if b.get("service") == "openvpn" and b.get("port")} or {a.openvpn})

@@ -63,7 +63,7 @@ TOOLS = [
          "location": {"type": "string", "description": "host and path, e.g. FIN-WS-07:C:\\Users\\admin\\Desktop"}},
          "required": ["bait", "location"], "additionalProperties": False}},
     {"name": "lure_rotate",
-     "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files and restart `lure listen` afterwards. Local files only.",
+     "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files; a running `lure listen` picks up the new set by itself within seconds. Local files only.",
      "inputSchema": {"type": "object", "properties": {
          "profile": {"type": "string", "enum": sorted(PROFILES)}}, "additionalProperties": False}},
     {"name": "lure_acknowledge",
@@ -147,7 +147,7 @@ class Server:
         m = rotate(self.manifest_path, **kw)
         live = [b for b in m["baits"] if not b.get("retired")]
         return {"fresh": sorted({b["file"] for b in live}), "retired_still_alerting": len(m["baits"]) - len(live),
-                "next": "Replant the fresh files and restart `lure listen` so it loads the new manifest."}
+                "next": "Replant the fresh files. A running `lure listen` loads the new set by itself within seconds."}
 
     def lure_acknowledge(self, id):
         from .alertlog import append_ack

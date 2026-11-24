@@ -1108,3 +1108,33 @@ class BackgroundDeliveryTest(unittest.TestCase):
         errors = [json.loads(x)["error"] for x in out if '"error"' in x]
         self.assertTrue(any("webhook failed" in e for e in errors))
         self.assertTrue(any("syslog failed" in e for e in errors))
+
+
+class ChatInjectionTest(unittest.TestCase):
+    """Regression: attacker-chosen login names went into chat alerts as live markup."""
+
+    def setUp(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        self.a = Alerter(m, out=lambda l: None)
+        evil = "<!channel> <https://evil.example/reset|Reset your password> @everyone [Reset](https://evil.example)"
+        self.ev = self.a.event("http", "10.1.1.1", 1, evil + "x" * 3000)
+
+    def test_slack_has_no_live_links_or_mentions(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://hooks.slack.com/services/T/B/x", self.ev)
+        self.assertNotIn("<!channel>", p["text"])
+        self.assertNotIn("<https://evil", p["text"])
+        self.assertIn("&lt;!channel&gt;", p["text"])
+        self.assertLess(len(p["text"]), 2500)
+
+    def test_discord_never_pings(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://discord.com/api/webhooks/1/x", self.ev)
+        self.assertEqual(p["allowed_mentions"], {"parse": []})
+
+    def test_teams_markdown_is_escaped(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://example.webhook.office.com/x", self.ev)
+        user = next(f["value"] for f in p["sections"][0]["facts"] if f["name"] == "Username")
+        self.assertNotIn("[Reset](", user)
+        self.assertIn("\[Reset\]", user)

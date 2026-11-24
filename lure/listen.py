@@ -79,20 +79,51 @@ def _ntfy(url):
     return (f"{u.scheme}://{u.netloc}/", topic) if topic and "/" not in topic else None
 
 
+def _slack_escape(t):
+    """Slack treats <...> as links and mentions (<!channel>, <https://x|label>); escape so text stays text."""
+    return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+_MD = re.compile("([" + re.escape("\\`*_[]()<>#|~") + "])")
+
+
+def _md_escape(t):
+    """Neutralise Markdown/HTML in attacker-influenced text for Teams cards."""
+    return _MD.sub(lambda m: "\\" + m.group(1), str(t))
+
+
+def _safe_ev(ev):
+    """A copy whose attacker-chosen fields (username, log detail) are shortened for display."""
+    ev = dict(ev)
+    changed = False
+    for k in ("username", "detail"):
+        if ev.get(k) and len(str(ev[k])) > 80:
+            ev[k] = str(ev[k])[:80] + "..."
+            changed = True
+    if changed:
+        ev["explain"] = explain(ev)
+    return ev
+
+
 def webhook_payload(url, ev):
-    """Shape the alert for the webhook's platform; plain JSON for everything else."""
+    """Shape the alert for the webhook's platform; plain JSON for everything else.
+
+    Login names and log lines in an alert are chosen by whoever touched the listener, so chat markup in them
+    (Slack links and mentions, Discord @everyone, Teams Markdown) is escaped or disabled."""
+    ev = _safe_ev(ev)
     head, text = alert_text(ev, bold="slack" in url)
     where = ev.get("location") or ev.get("planted_on") or ""
     if "hooks.slack.com" in url:
-        return {"text": text, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}},
-                                         {"type": "context", "elements": [{"type": "mrkdwn", "text": "SilentMesh Lure · " + ev.get("why", "")}]}]}
+        body = _slack_escape(text)
+        return {"text": body, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": body}},
+                                         {"type": "context", "elements": [{"type": "mrkdwn", "text": "SilentMesh Lure · " + _slack_escape(ev.get("why", ""))}]}]}
     if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
-        return {"username": "Lure", "content": text}
+        return {"username": "Lure", "content": text, "allowed_mentions": {"parse": []}}
     if "office.com" in url or "webhook.office" in url or "logic.azure.com" in url:
         return {"@type": "MessageCard", "@context": "https://schema.org/extensions",
                 "themeColor": "FF7A59" if ev.get("severity") == "high" else "F2C14E",
-                "summary": head, "title": head,
-                "sections": [{"facts": [{"name": k, "value": str(v)} for k, v in
+                "summary": head, "title": _md_escape(head),
+                "sections": [{"facts": [{"name": k, "value": _md_escape(v)} for k, v in
                               [("Planted", where), ("Source", ev.get("source")), ("Service", ev.get("service")),
                                ("Username", ev.get("username")), ("Time", ev.get("time")), ("Why", ev.get("why"))] if v]}]}
     if "api.telegram.org" in url:

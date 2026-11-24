@@ -1095,7 +1095,8 @@ class BackgroundDeliveryTest(unittest.TestCase):
         t0 = time.time()
         self.assertIsNotNone(a.event("http", "10.1.1.1", 1, "u1"))
         self.assertIsNotNone(a.event("http", "10.2.2.2", 1, "u1"))
-        self.assertLess(time.time() - t0, 0.5, "event() waited for the webhook")
+        # Old code waited about 6 s here (two 3 s webhooks); 2 s leaves room for a busy machine.
+        self.assertLess(time.time() - t0, 2.0, "event() waited for the webhook")
         self.assertTrue(a.flush(timeout=15))
         self.assertEqual(len(got), 2)
 

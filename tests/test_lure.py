@@ -1343,3 +1343,35 @@ class TamperAlarmTest(unittest.TestCase):
             t.join(timeout=5)
         self.assertEqual(sleeps[0], 120)
         self.assertGreaterEqual(len(calls), 3)
+
+
+class RepeatAttemptsTest(unittest.TestCase):
+    """Regression: repeat bait uses from one address vanished for 10 minutes (a second intruder behind NAT too)."""
+
+    def test_repeats_are_recorded_but_not_notified(self):
+        out = []
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=out.append, window=600)
+        for i in range(5):
+            a.event("rdp", "10.1.1.1", 100 + i, "u1", now=10 + i)
+        notified = [json.loads(x) for x in out if x.startswith("{") and '"severity"' in x]
+        self.assertEqual(len(notified), 1)                       # one notification ...
+        self.assertEqual(len(a.history), 5)                      # ... but every attempt is on record
+        self.assertEqual([e.get("repeat") for e in a.history], [None, 1, 2, 3, 4])
+        self.assertEqual(a.state()["depth"]["10.1.1.1"]["attempts"], 5)
+
+    def test_repeat_logging_is_capped(self):
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=[].append, window=600)
+        for i in range(Alerter.MAX_REPEATS_LOGGED + 30):
+            a.event("rdp", "10.1.1.1", i, "u1", now=10)
+        self.assertEqual(len(a.history), Alerter.MAX_REPEATS_LOGGED + 1)
+
+    def test_new_window_notifies_again(self):
+        out = []
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=out.append, window=600)
+        a.event("rdp", "10.1.1.1", 1, "u1", now=0)
+        a.event("rdp", "10.1.1.1", 2, "u1", now=10)
+        a.event("rdp", "10.1.1.1", 3, "u1", now=700)
+        self.assertEqual(sum(1 for x in out if '"severity"' in x), 2)

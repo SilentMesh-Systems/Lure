@@ -276,6 +276,8 @@ def smtplib_error():
 class Alerter:
     """Dedupes and rate-limits, then fans out to the configured sinks."""
 
+    MAX_REPEATS_LOGGED = 50
+
     def __init__(self, manifest, webhook=None, syslog=None, window=600, max_per_window=20, out=print, log=None,
                  merge_window=0, desktop=False, email=None, demo=False):
         self.by_user = {b["username"]: b for b in manifest.get("baits", [])}
@@ -294,6 +296,8 @@ class Alerter:
         # Low-value events dropped by the budget, and when the flood alert was last raised.
         self.suppressed = 0
         self.flood_reported = -1e18
+        # Repeat bait uses per (source, service, username) in the current window: recorded, not notified.
+        self.repeats = {}
         self._queue = None
         self.manifest = manifest
         # Browsers and git first ask without a login, then retry with one. A bare
@@ -380,6 +384,7 @@ class Alerter:
         ev["explain"] = explain(ev)
         key = (src_ip, service, username)
         flood = None
+        repeat = False
         # The listener, log watchers, the DNS bait and the dashboard's test button all call event() from
         # different threads; dedupe, budget and warning state change together under one lock.
         with self.lock:
@@ -391,8 +396,22 @@ class Alerter:
                 ev["why"] = ("a bait credential was entered again after a written warning that the system "
                              "is for authorised personnel only")
             elif now - self.seen.get(key, -1e18) < self.window:
-                return None
-            if bait is None:
+                if bait is None:
+                    return None
+                # A repeat bait use from the same source is not notified again, but it is recorded, so the
+                # incident timeline shows every attempt (a second intruder behind the same address, or someone
+                # trying the bait over and over). Capped per key and window so a loop cannot fill the disk.
+                n = self.repeats.get(key, 0) + 1
+                self.repeats[key] = n
+                if n > self.MAX_REPEATS_LOGGED:
+                    return None
+                ev["repeat"] = n
+                ev["why"] = ("the same bait was used again from the same address; recorded, not notified again "
+                             f"(attempt {n + 1} in {self.window // 60} minutes)")
+                repeat = True
+            if repeat:
+                pass
+            elif bait is None:
                 # Only events that carry no bait share the budget. A bait use is never dropped for budget
                 # reasons: otherwise an intruder could send junk logins until the budget is gone, then use a
                 # bait unseen.
@@ -406,12 +425,17 @@ class Alerter:
                         return None
                 else:
                     self.sent.append(now)
-            if flood is None:
+            if flood is None and not repeat:
                 self.seen[key] = now
+                self.repeats[key] = 0
                 if bait is not None and service == "http" and not after_warning:
                     self.warned.add((src_ip, username))
         if flood is not None:
             self._emit(flood)
+            return None
+        if repeat:
+            ev.update(self._evidence(src_ip, ev))
+            self._emit(ev, deliver=False)
             return None
         if bait is not None:
             ev.update(self._evidence(src_ip, ev))
@@ -560,7 +584,9 @@ class Alerter:
                 self.out(json.dumps({"error": f"heartbeat email failed: {e}"}))
         return title, text
 
-    def _emit(self, ev):
+    def _emit(self, ev, deliver=True):
+        """Record the alert (history and log). With deliver=False it is not printed or sent anywhere: used for
+        repeat attempts, which belong in the timeline but should not wake anyone up again."""
         line = json.dumps(ev)
         from . import alertlog
         with self.lock:
@@ -569,6 +595,8 @@ class Alerter:
             self.history.append(ev)
             if self.log:
                 alertlog.append_alert(self.log, ev)
+        if not deliver:
+            return
         self.out(line)
         try:
             import sys; sys.stdout.flush()

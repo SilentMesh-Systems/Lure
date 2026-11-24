@@ -366,30 +366,41 @@ class Alerter:
             ev["demo"] = True
         ev["explain"] = explain(ev)
         key = (src_ip, service, username)
-        after_warning = bool(bait) and service == "http" and (src_ip, username) in self.warned
-        if after_warning:
-            # The same bait login was sent again after the warning banner: let it through once.
-            self.warned.discard((src_ip, username))
-            ev["after_warning"] = True
-            ev["why"] = ("a bait credential was entered again after a written warning that the system "
-                         "is for authorised personnel only")
-        elif now - self.seen.get(key, -1e18) < self.window:
-            return None
-        if bait is None:
-            # Only events that carry no bait share the budget. A bait use is never dropped for budget reasons:
-            # otherwise an intruder could send junk logins until the budget is gone, then use a bait unseen.
-            self.sent = [t for t in self.sent if now - t < self.window]
-            if len(self.sent) >= self.max_per_window:
-                self.suppressed += 1
-                if now - self.flood_reported >= self.window:
-                    self.flood_reported = now
-                    self._emit(self._flood_event(now, src_ip, src_port))
+        flood = None
+        # The listener, log watchers, the DNS bait and the dashboard's test button all call event() from
+        # different threads; dedupe, budget and warning state change together under one lock.
+        with self.lock:
+            after_warning = bool(bait) and service == "http" and (src_ip, username) in self.warned
+            if after_warning:
+                # The same bait login was sent again after the warning banner: let it through once.
+                self.warned.discard((src_ip, username))
+                ev["after_warning"] = True
+                ev["why"] = ("a bait credential was entered again after a written warning that the system "
+                             "is for authorised personnel only")
+            elif now - self.seen.get(key, -1e18) < self.window:
                 return None
-            self.sent.append(now)
-        self.seen[key] = now
+            if bait is None:
+                # Only events that carry no bait share the budget. A bait use is never dropped for budget
+                # reasons: otherwise an intruder could send junk logins until the budget is gone, then use a
+                # bait unseen.
+                self.sent = [t for t in self.sent if now - t < self.window]
+                if len(self.sent) >= self.max_per_window:
+                    self.suppressed += 1
+                    if now - self.flood_reported >= self.window:
+                        self.flood_reported = now
+                        flood = self._flood_event(now, src_ip, src_port)
+                    else:
+                        return None
+                else:
+                    self.sent.append(now)
+            if flood is None:
+                self.seen[key] = now
+                if bait is not None and service == "http" and not after_warning:
+                    self.warned.add((src_ip, username))
+        if flood is not None:
+            self._emit(flood)
+            return None
         if bait is not None:
-            if service == "http" and not after_warning:
-                self.warned.add((src_ip, username))
             ev.update(self._evidence(src_ip, ev))
         if bait is None and username is None and self.merge_window:
             timer = threading.Timer(self.merge_window, self._flush_pending, (src_ip,))

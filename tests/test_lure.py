@@ -1212,3 +1212,31 @@ class CorruptLogTest(unittest.TestCase):
             with open(log) as f:
                 self.assertEqual(len([l for l in f if l.strip()]), 1)
             self.assertTrue(any("unreadable" in x for x in out))
+
+
+class ConcurrencyTest(unittest.TestCase):
+    def test_many_threads_never_exceed_the_budget_or_lose_bait_alerts(self):
+        import threading
+        m = {"baits": [{"username": f"b{i}", "file": "f.csv", "plant_on": "x"} for i in range(50)]}
+        out = []
+        a = Alerter(m, out=out.append, window=600, max_per_window=20)
+
+        def junk(n):
+            for i in range(50):
+                a.event("http", f"10.{n}.0.{i}", 1, f"junk{n}_{i}", now=100)
+
+        def baits():
+            for i in range(50):
+                a.event("http", "10.99.0.1", i, f"b{i}", now=100)
+
+        ts = [threading.Thread(target=junk, args=(n,)) for n in range(8)] + [threading.Thread(target=baits)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        mediums = sum(1 for h in a.history if h["severity"] == "medium")
+        baits_seen = sum(1 for h in a.history if h["severity"] == "high" and h.get("bait_file"))
+        floods = sum(1 for h in a.history if h.get("service") == "flood")
+        self.assertEqual(mediums, 20)
+        self.assertEqual(baits_seen, 50)
+        self.assertEqual(floods, 1)

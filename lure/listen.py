@@ -306,12 +306,31 @@ class Alerter:
         self.history = []
         # (source ip, username) of HTTP bait logins answered with the warning banner.
         self.warned = set()
+        self.repaired = 0
         if log:
             try:
-                with open(log) as f:
-                    self.history = [json.loads(line) for line in f if line.strip()]
+                with open(log, errors="replace") as f:
+                    lines = [line for line in f if line.strip()]
             except FileNotFoundError:
-                pass
+                lines = []
+            bad = []
+            for line in lines:
+                try:
+                    ev = json.loads(line)
+                    if not isinstance(ev, dict):
+                        raise ValueError("not an alert")
+                    self.history.append(ev)
+                except ValueError:
+                    bad.append(line)
+            if bad:
+                # One damaged line (a crash mid-write, or tampering) must not stop Lure from starting.
+                # Keep it for inspection, rewrite the log with the good lines, and say so.
+                self.repaired = len(bad)
+                with open(log + ".corrupt", "a", errors="replace") as f:
+                    f.writelines(bad)
+                with open(log, "w") as f:
+                    f.writelines(json.dumps(e) + "\n" for e in self.history)
+                self.out(json.dumps({"error": f"alert log: {len(bad)} unreadable line(s) moved to {log}.corrupt"}))
 
     def event(self, service, src_ip, src_port, username, now=None, local_port=None, source_detail=None):
         now = time.time() if now is None else now

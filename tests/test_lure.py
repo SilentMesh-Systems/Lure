@@ -1195,3 +1195,20 @@ class HttpLoginFormatsTest(unittest.TestCase):
         asyncio.run(scenario())
         highs = [h for h in a.history if h["severity"] == "high"]
         self.assertEqual(len(highs), 2)
+
+
+class CorruptLogTest(unittest.TestCase):
+    def test_a_corrupt_line_does_not_stop_start_up(self):
+        """Regression: one unreadable line in alerts.jsonl raised at start and Lure would not run."""
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "alerts.jsonl")
+            with open(log, "w") as f:
+                f.write(json.dumps({"severity": "high", "id": 1}) + "\n{not json\n[1, 2]\n")
+            out = []
+            a = Alerter({"baits": []}, out=out.append, log=log)
+            self.assertEqual(len(a.history), 1)
+            self.assertEqual(a.repaired, 2)
+            self.assertTrue(os.path.exists(log + ".corrupt"))
+            with open(log) as f:
+                self.assertEqual(len([l for l in f if l.strip()]), 1)
+            self.assertTrue(any("unreadable" in x for x in out))

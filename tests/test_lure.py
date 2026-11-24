@@ -1137,4 +1137,4 @@ class ChatInjectionTest(unittest.TestCase):
         p = webhook_payload("https://example.webhook.office.com/x", self.ev)
         user = next(f["value"] for f in p["sections"][0]["facts"] if f["name"] == "Username")
         self.assertNotIn("[Reset](", user)
-        self.assertIn("\[Reset\]", user)
+        self.assertIn(r"\[Reset\]", user)

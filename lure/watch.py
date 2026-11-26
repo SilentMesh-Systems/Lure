@@ -28,6 +28,7 @@ class Watcher:
         self.alerter = alerter
         self.paths = paths
         self.pattern = _pattern(alerter.by_user)
+        self._users = alerter.by_user          # rebuilt when the bait set is reloaded
         self.offsets = {}
         for p in paths:
             try:
@@ -36,6 +37,9 @@ class Watcher:
                 self.offsets[p] = 0
 
     def scan_line(self, path, line):
+        if self.alerter.by_user is not self._users:
+            self._users = self.alerter.by_user
+            self.pattern = _pattern(self._users)
         if not self.pattern:
             return None
         m = self.pattern.search(line)

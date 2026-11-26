@@ -122,9 +122,22 @@ class AlerterTest(unittest.TestCase):
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 1, "u1", now=0))
         self.assertIsNone(self.a.event("rdp", "10.1.1.1", 2, "u1", now=10))
         self.assertIsNotNone(self.a.event("rdp", "10.1.1.1", 3, "u1", now=700))
+        # The budget (3 per window) covers only events without a bait.
         self.a.event("rdp", "10.2.2.2", 1, None, now=701)
         self.a.event("rdp", "10.3.3.3", 1, None, now=702)
+        self.a.event("rdp", "10.5.5.5", 1, None, now=702)
         self.assertIsNone(self.a.event("rdp", "10.4.4.4", 1, None, now=703))
+
+    def test_junk_logins_cannot_hide_a_bait_login(self):
+        """Regression: junk logins used to use up the shared budget so a real bait login raised no alert."""
+        for i in range(25):
+            self.a.event("http", "10.9.9.9", 1000 + i, f"probe{i}", now=10 + i)
+        ev = self.a.event("http", "10.9.9.9", 2000, "u1", now=40)
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["severity"], "high")
+        floods = [json.loads(x) for x in self.out if '"flood"' in x]
+        self.assertEqual(len(floods), 1)
+        self.assertEqual(floods[0]["severity"], "high")
 
 
 class DemonstratedIntentTest(unittest.TestCase):
@@ -266,8 +279,11 @@ class DashboardTest(unittest.TestCase):
                 self.assertTrue(st["baits"][0]["triggered"])
                 self.assertEqual(st["alerts"][0]["severity"], "high")
 
+                alert_id = st["alerts"][0]["id"]
+
                 def post(ctype, origin):
-                    req = urllib.request.Request(base + "/api/ack", data=b'{"id": 1}', method="POST",
+                    req = urllib.request.Request(base + "/api/ack", data=json.dumps({"id": alert_id}).encode(),
+                                                 method="POST",
                                                  headers={"Content-Type": ctype, "Origin": origin})
                     try:
                         return urllib.request.urlopen(req, timeout=5).status
@@ -718,14 +734,34 @@ class FounderFixesTest(unittest.TestCase):
     def test_desktop_popup_command_per_platform(self):
         from unittest import mock
         from lure import notify
-        seen = []
+        seen, envs = [], []
         for plat in ("win32", "darwin", "linux"):
             with mock.patch.object(notify.sys, "platform", plat), mock.patch.object(notify.shutil, "which", return_value="/usr/bin/notify-send"):
-                self.assertTrue(notify.desktop("Lure: Bait used", "It's from 10.0.0.9", run=lambda c, **k: seen.append(c)))
+                self.assertTrue(notify.desktop("Lure: Bait used", "It's from 10.0.0.9",
+                                               run=lambda c, **k: (seen.append(c), envs.append(k.get("env")))))
         self.assertEqual(seen[0][0], "powershell")
-        self.assertIn("It''s from", seen[0][-1])
+        # The alert text must never be inside the PowerShell script, only in the environment.
+        self.assertNotIn("It's from", seen[0][-1])
+        self.assertEqual(envs[0]["LURE_TOAST_BODY"], "It's from 10.0.0.9")
         self.assertEqual(seen[1][0], "osascript")
         self.assertEqual(seen[2][0], "notify-send")
+
+    def test_desktop_popup_text_cannot_inject_powershell(self):
+        """Regression: curly quotes (U+2018/U+2019) used to end the PowerShell string and run commands."""
+        import shutil, tempfile, unittest
+        from lure import notify
+        if sys.platform != "win32" or not shutil.which("powershell"):
+            raise unittest.SkipTest("needs Windows PowerShell")
+        marker = os.path.join(tempfile.mkdtemp(), "injected.txt")
+        os.environ["LURE_TEST_MARKER"] = marker
+        try:
+            # No ASCII quotes in the payload, so the old escaping (doubling ') cannot neutralise it.
+            payload = "x’; Set-Content -Path $env:LURE_TEST_MARKER -Value pwned; ’"
+            for text in (payload, payload.replace("’", "‘")):
+                notify.desktop("Lure: " + text, "Unknown login " + text)
+        finally:
+            os.environ.pop("LURE_TEST_MARKER", None)
+        self.assertFalse(os.path.exists(marker), "alert text was executed as PowerShell")
 
     def test_email_needs_app_password_and_sends(self):
         from unittest import mock
@@ -1011,3 +1047,377 @@ class ReviewFixesTest(unittest.TestCase):
             a = Alerter(generate("10.0.0.5", d), out=lambda l: None)
             self.assertIn("every 3 day(s)", a.heartbeat(started=True, every_days=3)[1])
             self.assertIn("every week", a.heartbeat(started=True)[1])
+
+
+class FloodAlertTest(unittest.TestCase):
+    def test_flood_alert_does_not_pollute_attacker_paths(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        out = []
+        a = Alerter(m, out=out.append, window=600, max_per_window=2)
+        for i in range(5):
+            a.event("http", "10.9.9.9", 1000 + i, f"probe{i}", now=10 + i)
+        a.event("http", "10.9.9.9", 2000, "u1", now=40)
+        st = a.state()
+        self.assertEqual([s["file"] for s in st["paths"]["10.9.9.9"]], ["passwords.xlsx"])
+        self.assertEqual(st["depth"]["10.9.9.9"]["baits_used"], 1)
+        self.assertTrue(any(x["service"] == "flood" for x in st["alerts"]))
+        self.assertIn("burst", explain_flood_text(st))
+
+
+def explain_flood_text(state):
+    return next(x["explain"]["what"] for x in state["alerts"] if x["service"] == "flood")
+
+
+class BackgroundDeliveryTest(unittest.TestCase):
+    """Regression: webhook, email, popup and syslog used to run inside the connection handler."""
+
+    def _slow_server(self, delay):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        got = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                got.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                time.sleep(delay)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        return f"http://127.0.0.1:{srv.server_address[1]}/hook", got
+
+    def test_slow_webhook_does_not_hold_up_the_listener(self):
+        url, got = self._slow_server(delay=3)
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        a = Alerter(m, out=lambda l: None, webhook=url)
+        t0 = time.time()
+        self.assertIsNotNone(a.event("http", "10.1.1.1", 1, "u1"))
+        self.assertIsNotNone(a.event("http", "10.2.2.2", 1, "u1"))
+        # Old code waited about 6 s here (two 3 s webhooks); 2 s leaves room for a busy machine.
+        self.assertLess(time.time() - t0, 2.0, "event() waited for the webhook")
+        self.assertTrue(a.flush(timeout=15))
+        self.assertEqual(len(got), 2)
+
+    def test_bad_syslog_and_webhook_settings_never_raise(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        out = []
+        a = Alerter(m, out=out.append, webhook="not a url", syslog="no-such-host.invalid:notaport")
+        self.assertIsNotNone(a.event("http", "10.1.1.1", 1, "u1"))
+        self.assertTrue(a.flush(timeout=15))
+        errors = [json.loads(x)["error"] for x in out if '"error"' in x]
+        self.assertTrue(any("webhook failed" in e for e in errors))
+        self.assertTrue(any("syslog failed" in e for e in errors))
+
+
+class ChatInjectionTest(unittest.TestCase):
+    """Regression: attacker-chosen login names went into chat alerts as live markup."""
+
+    def setUp(self):
+        m = {"baits": [{"username": "u1", "file": "passwords.xlsx", "plant_on": "share"}]}
+        self.a = Alerter(m, out=lambda l: None)
+        evil = "<!channel> <https://evil.example/reset|Reset your password> @everyone [Reset](https://evil.example)"
+        self.ev = self.a.event("http", "10.1.1.1", 1, evil + "x" * 3000)
+
+    def test_slack_has_no_live_links_or_mentions(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://hooks.slack.com/services/T/B/x", self.ev)
+        self.assertNotIn("<!channel>", p["text"])
+        self.assertNotIn("<https://evil", p["text"])
+        self.assertIn("&lt;!channel&gt;", p["text"])
+        self.assertLess(len(p["text"]), 2500)
+
+    def test_discord_never_pings(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://discord.com/api/webhooks/1/x", self.ev)
+        self.assertEqual(p["allowed_mentions"], {"parse": []})
+
+    def test_teams_markdown_is_escaped(self):
+        from lure.listen import webhook_payload
+        p = webhook_payload("https://example.webhook.office.com/x", self.ev)
+        user = next(f["value"] for f in p["sections"][0]["facts"] if f["name"] == "Username")
+        self.assertNotIn("[Reset](", user)
+        self.assertIn(r"\[Reset\]", user)
+
+
+class HttpLoginFormatsTest(unittest.TestCase):
+    """Regression: only 'Authorization: Basic' was recognised, so other login styles were just 'medium'."""
+
+    def req(self, head, body=b""):
+        return head.replace(b"\n", b"\r\n") + b"\r\n" + body
+
+    def test_formats(self):
+        b64 = base64.b64encode(b"nas.admin_rw:x")
+        cases = {
+            "basic": self.req(b"GET / HTTP/1.1\nAuthorization:  basic   " + b64 + b"\n"),
+            "form": self.req(b"POST /login HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n",
+                             b"username=nas.admin_rw&password=x"),
+            "json": self.req(b"POST /api/login HTTP/1.1\nContent-Type: application/json\n",
+                             b'{"email": "nas.admin_rw", "password": "x"}'),
+            "nested json": self.req(b"POST /api HTTP/1.1\nContent-Type: application/json\n",
+                                    b'{"credentials": {"login": "nas.admin_rw", "pass": "x"}}'),
+            "digest": self.req(b'GET / HTTP/1.1\nAuthorization: Digest realm="x", username="nas.admin_rw", nonce="1"\n'),
+            "query": self.req(b"GET /login?user=nas.admin_rw&pw=x HTTP/1.1\n"),
+        }
+        for name, data in cases.items():
+            self.assertEqual(parse_http(data), "nas.admin_rw", name)
+
+    def test_basic_in_body_is_not_a_header(self):
+        data = self.req(b"POST /x HTTP/1.1\nContent-Type: text/plain\n", b"Authorization: Basic " + base64.b64encode(b"u1:x"))
+        self.assertIsNone(parse_http(data))
+
+    def test_padded_and_split_requests_reach_the_parser(self):
+        from lure.listen import _serve, HTTP_401
+        m = {"baits": [{"username": "nas.admin_rw", "file": "passwords.csv", "plant_on": "share"}]}
+        a = Alerter(m, out=lambda l: None)
+        b64 = base64.b64encode(b"nas.admin_rw:x")
+
+        async def scenario():
+            srv = await _serve(a, "http", 0, parse_http, HTTP_401)
+            port = srv.sockets[0].getsockname()[1]
+            padded = b"GET / HTTP/1.1\r\nCookie: " + b"a" * 6000 + b"\r\nAuthorization: Basic " + b64 + b"\r\n\r\n"
+            r, w = await asyncio.open_connection("127.0.0.1", port)
+            w.write(padded)
+            await w.drain()
+            await r.read()
+            w.close()
+            r, w = await asyncio.open_connection("127.0.0.1", port + 0)
+            for piece in (b"POST /login HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n",
+                          b"Content-Length: 30\r\n\r\n", b"username=nas.admin_rw&", b"password=x"):
+                w.write(piece)
+                await w.drain()
+                await asyncio.sleep(0.1)
+            await r.read()
+            w.close()
+            srv.close()
+
+        asyncio.run(scenario())
+        highs = [h for h in a.history if h["severity"] == "high"]
+        self.assertEqual(len(highs), 2)
+
+
+class CorruptLogTest(unittest.TestCase):
+    def test_a_corrupt_line_does_not_stop_start_up(self):
+        """Regression: one unreadable line in alerts.jsonl raised at start and Lure would not run."""
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "alerts.jsonl")
+            with open(log, "w") as f:
+                f.write(json.dumps({"severity": "high", "id": 1}) + "\n{not json\n[1, 2]\n")
+            out = []
+            a = Alerter({"baits": []}, out=out.append, log=log)
+            self.assertEqual(len(a.history), 1)
+            self.assertEqual(a.repaired, 2)
+            self.assertTrue(os.path.exists(log + ".corrupt"))
+            # The log itself is never rewritten (other processes may be appending to it).
+            with open(log) as f:
+                self.assertEqual(len([l for l in f if l.strip()]), 3)
+            self.assertTrue(any("unreadable" in x for x in out))
+            # A second start does not copy the same bad lines out again.
+            Alerter({"baits": []}, out=[].append, log=log)
+            with open(log + ".corrupt") as f:
+                self.assertEqual(len([l for l in f if l.strip()]), 2)
+
+
+class SharedAlertLogTest(unittest.TestCase):
+    """Regression: per-process ids collided and acknowledging rewrote the file, erasing other processes' alerts."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.log = os.path.join(self.d, "alerts.jsonl")
+        self.m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"},
+                            {"username": "u2", "file": "b.csv", "plant_on": "y"}]}
+
+    def test_two_processes_share_one_log_without_losing_alerts(self):
+        listener = Alerter(self.m, out=[].append, log=self.log)
+        watcher = Alerter(self.m, out=[].append, log=self.log)      # e.g. `lure watch` in another process
+        listener.event("http", "10.1.1.1", 1, "u1")
+        watcher.event("log:auth", "10.2.2.2", 1, "u2")
+        ids = [e["id"] for e in listener.history] + [e["id"] for e in watcher.history]
+        self.assertEqual(len(set(ids)), 2, "alert ids collided")
+        # The dashboard (listener) sees the watcher's alert without a restart.
+        self.assertEqual(len(listener.state()["alerts"]), 2)
+        # Acknowledging in the listener keeps the watcher's line in the file.
+        listener.acknowledge(listener.history[0]["id"])
+        from lure.alertlog import read
+        alerts = read(self.log)
+        self.assertEqual(len(alerts), 2)
+        self.assertEqual(sum(1 for a in alerts if a.get("acknowledged")), 1)
+
+    def test_mcp_acknowledge_appends(self):
+        from lure.alertlog import read
+        from lure.mcp import Server
+        a = Alerter(self.m, out=[].append, log=self.log)
+        a.event("http", "10.1.1.1", 1, "u1")
+        manifest = os.path.join(self.d, "manifest.json")
+        with open(manifest, "w") as f:
+            json.dump(self.m, f)
+        s = Server(manifest, self.log)
+        s.lure_acknowledge(a.history[0]["id"])
+        a.event("http", "10.3.3.3", 1, "u2")                      # written after the MCP acknowledgement
+        alerts = read(self.log)
+        self.assertEqual(len(alerts), 2)
+        self.assertTrue(alerts[0]["acknowledged"])
+        self.assertFalse(alerts[1].get("acknowledged"))
+
+
+class ConcurrencyTest(unittest.TestCase):
+    def test_many_threads_never_exceed_the_budget_or_lose_bait_alerts(self):
+        import threading
+        m = {"baits": [{"username": f"b{i}", "file": "f.csv", "plant_on": "x"} for i in range(50)]}
+        out = []
+        a = Alerter(m, out=out.append, window=600, max_per_window=20)
+
+        def junk(n):
+            for i in range(50):
+                a.event("http", f"10.{n}.0.{i}", 1, f"junk{n}_{i}", now=100)
+
+        def baits():
+            for i in range(50):
+                a.event("http", "10.99.0.1", i, f"b{i}", now=100)
+
+        ts = [threading.Thread(target=junk, args=(n,)) for n in range(8)] + [threading.Thread(target=baits)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        mediums = sum(1 for h in a.history if h["severity"] == "medium")
+        baits_seen = sum(1 for h in a.history if h["severity"] == "high" and h.get("bait_file"))
+        floods = sum(1 for h in a.history if h.get("service") == "flood")
+        self.assertEqual(mediums, 20)
+        self.assertEqual(baits_seen, 50)
+        self.assertEqual(floods, 1)
+
+
+class TamperAlarmTest(unittest.TestCase):
+    def test_check_in_pings_url_and_writes_file(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from lure import alive
+        hits = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "alive.json")
+            ok = alive.beat(f"http://127.0.0.1:{srv.server_address[1]}/ping/abc", path, {"alerts": 3})
+            self.assertTrue(ok)
+            self.assertEqual(hits, ["/ping/abc"])
+            with open(path) as f:
+                self.assertEqual(json.load(f)["alerts"], 3)
+
+    def test_failures_are_reported_not_raised(self):
+        from lure import alive
+        out = []
+        self.assertFalse(alive.beat("not a url", os.path.join("no", "such", "dir", "a.json"), out=out.append))
+        self.assertEqual(len(out), 2)
+
+    def test_loop_keeps_checking_in(self):
+        import threading
+        from lure import alive
+        calls = []
+        sleeps = []
+        stop = threading.Event()
+
+        def fake_sleep(s):
+            sleeps.append(s)
+            if len(sleeps) > 3:
+                stop.set()
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "alive.json")
+            t = alive.start(None, path, every_minutes=2, info=lambda: calls.append(1) or {}, sleep=fake_sleep,
+                            stop=stop)
+            t.join(timeout=5)
+        self.assertEqual(sleeps[0], 120)
+        self.assertGreaterEqual(len(calls), 3)
+
+
+class RepeatAttemptsTest(unittest.TestCase):
+    """Regression: repeat bait uses from one address vanished for 10 minutes (a second intruder behind NAT too)."""
+
+    def test_repeats_are_recorded_but_not_notified(self):
+        out = []
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=out.append, window=600)
+        for i in range(5):
+            a.event("rdp", "10.1.1.1", 100 + i, "u1", now=10 + i)
+        notified = [json.loads(x) for x in out if x.startswith("{") and '"severity"' in x]
+        self.assertEqual(len(notified), 1)                       # one notification ...
+        self.assertEqual(len(a.history), 5)                      # ... but every attempt is on record
+        self.assertEqual([e.get("repeat") for e in a.history], [None, 1, 2, 3, 4])
+        self.assertEqual(a.state()["depth"]["10.1.1.1"]["attempts"], 5)
+
+    def test_repeat_logging_is_capped(self):
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=[].append, window=600)
+        for i in range(Alerter.MAX_REPEATS_LOGGED + 30):
+            a.event("rdp", "10.1.1.1", i, "u1", now=10)
+        self.assertEqual(len(a.history), Alerter.MAX_REPEATS_LOGGED + 1)
+
+    def test_new_window_notifies_again(self):
+        out = []
+        m = {"baits": [{"username": "u1", "file": "a.csv", "plant_on": "x"}]}
+        a = Alerter(m, out=out.append, window=600)
+        a.event("rdp", "10.1.1.1", 1, "u1", now=0)
+        a.event("rdp", "10.1.1.1", 2, "u1", now=10)
+        a.event("rdp", "10.1.1.1", 3, "u1", now=700)
+        self.assertEqual(sum(1 for x in out if '"severity"' in x), 2)
+
+
+class ReloadAfterRotateTest(unittest.TestCase):
+    """Regression: after `lure rotate` a running listener still knew only the old baits until restarted."""
+
+    def test_running_listener_picks_up_rotated_baits(self):
+        import threading
+        from lure.generate import rotate
+        from lure.listen import watch_manifest
+        with tempfile.TemporaryDirectory() as d:
+            m = generate("10.0.0.5", d)
+            path = os.path.join(d, "manifest.json")
+            old_user = next(b["username"] for b in m["baits"] if b["service"] == "http")
+            a = Alerter(m, out=[].append)
+            ticks = threading.Event()
+            stop = threading.Event()
+
+            def fake_sleep(_):
+                ticks.wait(5)
+                ticks.clear()
+            t = watch_manifest(a, path, every=0, sleep=fake_sleep, stop=stop)
+            time.sleep(0.05)                       # let the watcher record the first modification time
+            new = rotate(path)
+            os.utime(path, None)
+            new_user = next(b["username"] for b in new["baits"] if b["service"] == "http" and not b.get("retired"))
+            for _ in range(50):
+                ticks.set()
+                time.sleep(0.05)
+                if new_user in a.by_user:
+                    break
+            stop.set()
+            ticks.set()
+            t.join(timeout=5)
+            self.assertEqual(a.event("http", "10.9.9.1", 1, new_user, now=0)["severity"], "high")
+            old = a.event("http", "10.9.9.2", 1, old_user, now=0)
+            self.assertEqual(old["severity"], "high")
+            self.assertTrue(old["retired"])
+
+    def test_log_watcher_follows_a_reload(self):
+        from lure.watch import Watcher
+        a = Alerter({"baits": [{"username": "old_user", "file": "a.csv", "plant_on": "x"}]}, out=[].append)
+        w = Watcher(a, [])
+        a.reload_manifest({"baits": [{"username": "new_user", "file": "b.csv", "plant_on": "y"}]})
+        ev = w.scan_line("/var/log/auth.log", "Failed password for new_user from 10.1.1.9 port 22")
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["severity"], "high")

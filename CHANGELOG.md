@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.0b4 (unreleased)
+Security and reliability release from SilentMesh's own audit of 0.1.0b3. Upgrading is recommended for everyone.
+
+Security fixes
+- Windows desktop popups (`--desktop`): alert text could break out of the PowerShell command that shows the popup. The text is now passed separately and is never part of the command.
+- A burst of junk logins could use up the alert budget so that a real bait login raised no alert. Bait logins are now never dropped by the budget, and a burst raises its own "flood" alert.
+- Slack, Teams and Discord alerts: login names chosen by whoever touched the listener could carry links, mentions or formatting. They are now escaped, Discord never pings, and very long names are shortened for display.
+- The HTTP listener read only one 4 KB chunk, so a login after large headers or split across packets could be missed. It now reads the whole request (headers up to 16 KB, body up to 8 KB).
+
+Reliability
+- Alerts are written and printed at once and delivered to webhook, email, popup and syslog on a background worker, so a slow or broken channel never holds up the listener. A bad webhook URL or syslog setting is reported instead of breaking alerts.
+- The alert log is append-only and safe to share between `lure listen`, `lure watch`, `lure aws watch` and the MCP server: unique ids across processes, acknowledgements are appended instead of rewriting the file, and the dashboard shows other processes' alerts without a restart. Existing logs keep working.
+- A damaged line in the alert log no longer stops `lure listen` from starting; it is skipped and copied to `alerts.jsonl.corrupt`.
+- Repeat uses of the same bait from the same address are recorded (with an attempt number) in the timeline instead of disappearing, without notifying you again.
+- `lure listen` and `lure watch` pick up `lure rotate` and `lure record` within about 10 seconds, without a restart.
+- Dedupe, budget and warning state are updated under one lock across threads.
+
+New
+- Login styles: besides Basic auth, the HTTP listener now recognises Digest, login forms, JSON login bodies and query strings.
+- Tamper alarm: `--alive-url` pings a dead-man service (healthchecks.io, Cronitor, Better Stack, Uptime Kuma) every `--alive-minutes` (default 5), so you hear about it if Lure is stopped; `--alive-file` writes a small status file for local monitoring.
+
 ## 0.1.0b3 (17 Nov 2026)
 - Anonymous usage statistics (command, version, OS, alert severity and service only; never IPs, bait names or alert contents), on by default and stated on first run; off with LURE_NO_TELEMETRY=1 or DO_NOT_TRACK=1.
 - Weekly "still listening" message, plus one at start, to your alert channels; `--heartbeat-days` sets the interval, 0 turns it off.

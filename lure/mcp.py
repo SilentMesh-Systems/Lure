@@ -63,7 +63,7 @@ TOOLS = [
          "location": {"type": "string", "description": "host and path, e.g. FIN-WS-07:C:\\Users\\admin\\Desktop"}},
          "required": ["bait", "location"], "additionalProperties": False}},
     {"name": "lure_rotate",
-     "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files and restart `lure listen` afterwards. Local files only.",
+     "description": "Replace the live baits with a fresh set: writes new bait files and marks the old ones retired in manifest.json. Not reversible, but nothing is lost: retired baits stay in the manifest and still alert if used. You must replant the new files; a running `lure listen` picks up the new set by itself within seconds. Local files only.",
      "inputSchema": {"type": "object", "properties": {
          "profile": {"type": "string", "enum": sorted(PROFILES)}}, "additionalProperties": False}},
     {"name": "lure_acknowledge",
@@ -93,11 +93,8 @@ class Server:
             return {"baits": []}
 
     def _alerts(self):
-        try:
-            with open(self.log_path) as f:
-                return [json.loads(line) for line in f if line.strip()]
-        except FileNotFoundError:
-            return []
+        from .alertlog import read
+        return read(self.log_path)
 
     @staticmethod
     def _public(b, fired):
@@ -107,11 +104,11 @@ class Server:
     # --- tools ----------------------------------------------------------
     def lure_status(self):
         m, alerts = self._manifest(), self._alerts()
-        fired = {a["username"] for a in alerts if a.get("severity") == "high"}
+        fired = {a["username"] for a in alerts if a.get("severity") == "high" and a.get("bait_file")}
         live = [b for b in m.get("baits", []) if not b.get("retired")]
         paths = {}
         for a in alerts:
-            if a.get("severity") == "high":
+            if a.get("severity") == "high" and a.get("bait_file"):
                 ip = a["source"].rsplit(":", 1)[0]
                 if not paths.get(ip) or paths[ip][-1] != a["bait_file"]:
                     paths.setdefault(ip, []).append(a["bait_file"])
@@ -150,18 +147,14 @@ class Server:
         m = rotate(self.manifest_path, **kw)
         live = [b for b in m["baits"] if not b.get("retired")]
         return {"fresh": sorted({b["file"] for b in live}), "retired_still_alerting": len(m["baits"]) - len(live),
-                "next": "Replant the fresh files and restart `lure listen` so it loads the new manifest."}
+                "next": "Replant the fresh files. A running `lure listen` loads the new set by itself within seconds."}
 
     def lure_acknowledge(self, id):
-        alerts = self._alerts()
-        hit = False
-        for a in alerts:
-            if a.get("id") == id:
-                a["acknowledged"] = hit = True
-        if not hit:
+        from .alertlog import append_ack
+        if not any(a.get("id") == id for a in self._alerts()):
             raise ValueError(f"no alert with id {id}")
-        with open(self.log_path, "w") as f:
-            f.writelines(json.dumps(a) + "\n" for a in alerts)
+        # Appended, never a rewrite: `lure listen` may be writing to the same log right now.
+        append_ack(self.log_path, [id], by="mcp")
         return {"acknowledged": id}
 
     # --- protocol -------------------------------------------------------

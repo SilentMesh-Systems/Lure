@@ -39,21 +39,23 @@ def save_config(cfg, path=None):
     return path
 
 
-def _ps_quote(s):
-    return "'" + str(s).replace("'", "''") + "'"
+TOAST_SCRIPT = (
+    "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;"
+    "$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+    "$t = $x.GetElementsByTagName('text'); $t.Item(0).InnerText = $env:LURE_TOAST_TITLE; $t.Item(1).InnerText = $env:LURE_TOAST_BODY;"
+    "$n = [Windows.UI.Notifications.ToastNotification]::new($x);"
+    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($n)")
 
 
 def desktop(title, body, run=subprocess.run):
     """Show a popup on this machine. Returns False if the platform offers no way."""
     title, body = str(title)[:120], str(body)[:400]
+    extra = {}
     if sys.platform == "win32":
-        script = (
-            "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;"
-            "$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
-            f"$t = $x.GetElementsByTagName('text'); $t.Item(0).InnerText = {_ps_quote(title)}; $t.Item(1).InnerText = {_ps_quote(body)};"
-            "$n = [Windows.UI.Notifications.ToastNotification]::new($x);"
-            "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($n)")
-        cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+        # Alert text can carry a login name an intruder chose, so it never goes into the PowerShell script:
+        # the fixed script reads it from environment variables, where no quote can break out.
+        cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", TOAST_SCRIPT]
+        extra["env"] = dict(os.environ, LURE_TOAST_TITLE=title, LURE_TOAST_BODY=body)
     elif sys.platform == "darwin":
         q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
         cmd = ["osascript", "-e", f"display notification {q(body)} with title {q(title)}"]
@@ -62,7 +64,7 @@ def desktop(title, body, run=subprocess.run):
     else:
         return False
     try:
-        run(cmd, check=False, timeout=15, capture_output=True)
+        run(cmd, check=False, timeout=15, capture_output=True, **extra)
         return True
     except (OSError, subprocess.SubprocessError):
         return False

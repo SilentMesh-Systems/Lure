@@ -17,7 +17,7 @@ pipx install --pip-args=--pre silentmesh-lure && lure demo
 
 ![Lure demo](assets/demo.gif)
 
-*Lure by SilentMesh*
+*Lure by SilentMesh* · **Using Lure? [Tell us in one line](https://github.com/SilentMesh-Systems/Lure/discussions/9)**: where you run it and what you'd change.
 
 **Planted credentials that give the attacker away.** A quiet safety net for any network, from a home router to a data centre. Deceive, never disrupt.
 

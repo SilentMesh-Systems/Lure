@@ -55,7 +55,7 @@ Times include reading the bait file first, so they are an upper bound.
 ## 3. Live on a working laptop
 
 On a founder's everyday Windows laptop already running Lure (15 bait logins), we added a bait AWS key in a
-company `infra` folder, a "board only" deal note whose "open the full deck" link points at the listener, and
+company folder, a "board only" deal note whose "open the full deck" link points at the listener, and
 three decoy tools offered to the laptop's AI coding assistant. Each was then triggered once.
 
 | Trap | Alert |
